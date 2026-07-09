@@ -4,9 +4,17 @@ const TILE = 48;
 const MAP_WIDTH = 16;
 const MAP_HEIGHT = 12;
 const STEP_DURATION_MS = 170;
-const BACKGROUND_SRC = '/pokemonlike-fantasy/assets/generated/starter-village-bg.png';
-const PLAYER_SHEET_SRC = '/pokemonlike-fantasy/assets/generated/player-sheet-chroma.png';
 
+const ASSET_SOURCES = {
+  player: '/pokemonlike-fantasy/assets/generated/pack2/player-walk-sheet-chroma.png',
+  house: '/pokemonlike-fantasy/assets/generated/pack2/house-chroma.png',
+  tree: '/pokemonlike-fantasy/assets/generated/pack2/tree-chroma.png',
+  pond: '/pokemonlike-fantasy/assets/generated/pack2/pond-chroma.png',
+  foliage: '/pokemonlike-fantasy/assets/generated/pack2/foliage-chroma.png',
+  fence: '/pokemonlike-fantasy/assets/generated/pack2/fence-chroma.png',
+} as const;
+
+type AssetKey = keyof typeof ASSET_SOURCES;
 type Direction = 'up' | 'down' | 'left' | 'right';
 type TileType =
   | 'grass'
@@ -33,6 +41,7 @@ type PlayerState = {
   moving: boolean;
   moveStartTime: number;
 };
+type AssetMap = Record<AssetKey, HTMLCanvasElement>;
 
 const MAP: TileType[][] = [
   ['tree', 'tree', 'grass', 'grass', 'flowers', 'grass', 'grass', 'grass', 'grass', 'grass', 'grass', 'flowers', 'grass', 'tree', 'tree', 'tree'],
@@ -71,17 +80,16 @@ const MOVEMENT_KEYS: Record<string, MoveIntent> = {
   d: { dx: 1, dy: 0, facing: 'right' },
 };
 
-const SPRITE_ORDER: Record<Direction, { col: number; row: number }> = {
-  down: { col: 0, row: 0 },
-  right: { col: 1, row: 0 },
-  left: { col: 0, row: 1 },
-  up: { col: 1, row: 1 },
+const SPRITE_ROWS: Record<Direction, number> = {
+  down: 0,
+  left: 1,
+  right: 2,
+  up: 3,
 };
 
 function App() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const backgroundRef = useRef<HTMLImageElement | null>(null);
-  const playerSheetRef = useRef<HTMLCanvasElement | null>(null);
+  const assetsRef = useRef<AssetMap | null>(null);
   const [assetsReady, setAssetsReady] = useState(false);
   const [player, setPlayer] = useState<PlayerState>({
     tileX: 7,
@@ -107,14 +115,11 @@ function App() {
   useEffect(() => {
     let cancelled = false;
 
-    Promise.all([loadImage(BACKGROUND_SRC), loadImage(PLAYER_SHEET_SRC)]).then(
-      ([background, playerSheet]) => {
-        if (cancelled) return;
-        backgroundRef.current = background;
-        playerSheetRef.current = removeGreenScreen(playerSheet);
-        setAssetsReady(true);
-      },
-    );
+    loadAllAssets().then((assetMap) => {
+      if (cancelled) return;
+      assetsRef.current = assetMap;
+      setAssetsReady(true);
+    });
 
     return () => {
       cancelled = true;
@@ -218,34 +223,33 @@ function App() {
   useEffect(() => {
     const canvas = canvasRef.current;
     const context = canvas?.getContext('2d');
+    const assets = assetsRef.current;
     if (!canvas || !context) return;
 
     context.clearRect(0, 0, canvas.width, canvas.height);
 
-    if (assetsReady && backgroundRef.current && playerSheetRef.current) {
-      context.imageSmoothingEnabled = true;
-      context.drawImage(backgroundRef.current, 0, 0, canvas.width, canvas.height);
-      drawPlayerShadow(context, player.renderX, player.renderY);
-      drawPlayerSprite(context, playerSheetRef.current, player.renderX, player.renderY, player.facing);
+    if (!assetsReady || !assets) {
+      context.fillStyle = '#8fcf73';
+      context.fillRect(0, 0, canvas.width, canvas.height);
       return;
     }
 
-    context.fillStyle = '#85cf73';
-    context.fillRect(0, 0, canvas.width, canvas.height);
+    renderScene(context, assets, player);
   }, [assetsReady, player]);
 
   return (
     <main className="app-shell">
       <section className="intro-card">
-        <p className="eyebrow">AI Art Pass</p>
-        <h1>Enfin de vrais assets</h1>
+        <p className="eyebrow">Round 2</p>
+        <h1>Vrai pack modulaire + marche animée</h1>
         <p className="description">
-          Le décor principal et le premier sprite joueur viennent maintenant d’un vrai lot d’assets
-          générés puis intégrés au prototype.
+          Le prototype utilise maintenant des éléments séparés pour le décor, un meilleur sprite
+          joueur plus top-down, et une vraie animation de marche.
         </p>
         <div className="tips">
           <span>Déplacement: flèches, ZQSD ou WASD</span>
-          <span>Fond illustré + sprite IA intégrés dans le jeu</span>
+          <span>Assets séparés: maison, arbres, étangs, feuillages, clôtures</span>
+          <span>Marche animée: 12 frames joueur</span>
         </div>
       </section>
 
@@ -258,6 +262,204 @@ function App() {
         />
       </section>
     </main>
+  );
+}
+
+async function loadAllAssets() {
+  const entries = await Promise.all(
+    Object.entries(ASSET_SOURCES).map(async ([key, src]) => {
+      const image = await loadImage(src);
+      return [key, removeGreenScreen(image)] as const;
+    }),
+  );
+
+  return Object.fromEntries(entries) as AssetMap;
+}
+
+function renderScene(context: CanvasRenderingContext2D, assets: AssetMap, player: PlayerState) {
+  context.imageSmoothingEnabled = true;
+  drawGround(context);
+  drawPonds(context, assets.pond);
+  drawPathNetwork(context);
+  drawHouse(context, assets.house);
+  drawFences(context, assets.fence);
+  drawFoliage(context, assets.foliage);
+  drawTrees(context, assets.tree);
+  drawPlayerShadow(context, player.renderX, player.renderY);
+  drawPlayerSprite(context, assets.player, player);
+}
+
+function drawGround(context: CanvasRenderingContext2D) {
+  const width = MAP_WIDTH * TILE;
+  const height = MAP_HEIGHT * TILE;
+  const sky = context.createLinearGradient(0, 0, 0, height);
+  sky.addColorStop(0, '#ddf4ff');
+  sky.addColorStop(0.24, '#dff6d7');
+  sky.addColorStop(1, '#a6dc79');
+  context.fillStyle = sky;
+  context.fillRect(0, 0, width, height);
+
+  for (let y = 0; y < MAP_HEIGHT; y += 1) {
+    for (let x = 0; x < MAP_WIDTH; x += 1) {
+      const px = x * TILE;
+      const py = y * TILE;
+      const fill = context.createLinearGradient(px, py, px, py + TILE);
+      fill.addColorStop(0, '#9ce173');
+      fill.addColorStop(1, '#6dbe58');
+      context.fillStyle = fill;
+      fillRoundedRect(context, px, py, TILE, TILE, 14);
+
+      context.fillStyle = (x + y) % 2 === 0 ? 'rgba(241,255,207,0.14)' : 'rgba(57,114,48,0.07)';
+      fillRoundedRect(context, px + 1, py + 1, TILE - 2, TILE - 2, 14);
+
+      context.fillStyle = 'rgba(255,255,255,0.12)';
+      context.beginPath();
+      context.ellipse(px + 14, py + 14, 8, 4, -0.2, 0, Math.PI * 2);
+      context.ellipse(px + 30, py + 31, 7, 3, 0.18, 0, Math.PI * 2);
+      context.fill();
+    }
+  }
+}
+
+function drawPathNetwork(context: CanvasRenderingContext2D) {
+  for (let y = 0; y < MAP_HEIGHT; y += 1) {
+    for (let x = 0; x < MAP_WIDTH; x += 1) {
+      if (!isPathLike(x, y)) continue;
+
+      const centerX = x * TILE + TILE / 2;
+      const centerY = y * TILE + TILE / 2;
+
+      context.fillStyle = '#ceb386';
+      context.beginPath();
+      context.arc(centerX, centerY, 18, 0, Math.PI * 2);
+      context.fill();
+
+      context.fillStyle = '#ebd9b5';
+      context.beginPath();
+      context.arc(centerX - 1.5, centerY - 2.5, 12, 0, Math.PI * 2);
+      context.fill();
+
+      if (isPathLike(x + 1, y)) {
+        drawPathLink(context, centerX, centerY, centerX + TILE / 2, centerY);
+      }
+      if (isPathLike(x, y + 1)) {
+        drawPathLink(context, centerX, centerY, centerX, centerY + TILE / 2);
+      }
+    }
+  }
+}
+
+function drawPathLink(
+  context: CanvasRenderingContext2D,
+  startX: number,
+  startY: number,
+  endX: number,
+  endY: number,
+) {
+  context.strokeStyle = '#ceb386';
+  context.lineWidth = 34;
+  context.lineCap = 'round';
+  context.beginPath();
+  context.moveTo(startX, startY);
+  context.lineTo(endX, endY);
+  context.stroke();
+
+  context.strokeStyle = '#ebd9b5';
+  context.lineWidth = 22;
+  context.beginPath();
+  context.moveTo(startX, startY);
+  context.lineTo(endX, endY);
+  context.stroke();
+}
+
+function drawHouse(context: CanvasRenderingContext2D, house: HTMLCanvasElement) {
+  const drawWidth = 314;
+  const drawHeight = 240;
+  const x = 214;
+  const y = 18;
+
+  context.fillStyle = 'rgba(73, 55, 37, 0.16)';
+  context.beginPath();
+  context.ellipse(x + drawWidth / 2, y + drawHeight - 14, 88, 18, 0, 0, Math.PI * 2);
+  context.fill();
+
+  context.drawImage(house, x, y, drawWidth, drawHeight);
+}
+
+function drawPonds(context: CanvasRenderingContext2D, pond: HTMLCanvasElement) {
+  context.drawImage(pond, 414, 32, 232, 232);
+  context.drawImage(pond, 580, 344, 164, 164);
+}
+
+function drawFences(context: CanvasRenderingContext2D, fence: HTMLCanvasElement) {
+  forEachTile('fence', (x, y) => {
+    const px = x * TILE - 18;
+    const py = y * TILE + 11;
+    context.drawImage(fence, px, py, 92, 34);
+  });
+}
+
+function drawFoliage(context: CanvasRenderingContext2D, foliage: HTMLCanvasElement) {
+  forEachTile('bush', (x, y) => {
+    const px = x * TILE - 10;
+    const py = y * TILE + 2;
+    context.drawImage(foliage, px, py, 72, 72);
+  });
+
+  forEachTile('flowers', (x, y) => {
+    const px = x * TILE - 2;
+    const py = y * TILE + 8;
+    context.save();
+    context.globalAlpha = 0.95;
+    context.drawImage(foliage, px, py, 58, 58);
+    context.restore();
+  });
+}
+
+function drawTrees(context: CanvasRenderingContext2D, tree: HTMLCanvasElement) {
+  forEachTile('tree', (x, y) => {
+    const px = x * TILE - 28;
+    const py = y * TILE - 34;
+    context.drawImage(tree, px, py, 108, 108);
+  });
+}
+
+function drawPlayerShadow(context: CanvasRenderingContext2D, tileX: number, tileY: number) {
+  const centerX = tileX * TILE + TILE / 2;
+  const centerY = tileY * TILE + TILE - 7;
+
+  context.fillStyle = 'rgba(29, 34, 24, 0.18)';
+  context.beginPath();
+  context.ellipse(centerX, centerY, 12, 6, 0, 0, Math.PI * 2);
+  context.fill();
+}
+
+function drawPlayerSprite(
+  context: CanvasRenderingContext2D,
+  spriteSheet: HTMLCanvasElement,
+  player: PlayerState,
+) {
+  const spriteWidth = spriteSheet.width / 3;
+  const spriteHeight = spriteSheet.height / 4;
+  const row = SPRITE_ROWS[player.facing];
+  const column = player.moving ? [0, 1, 2][Math.floor(performance.now() / 110) % 3] : 1;
+  const sourceX = column * spriteWidth;
+  const sourceY = row * spriteHeight;
+  const drawWidth = 46;
+  const drawHeight = 46;
+  const px = player.renderX * TILE + (TILE - drawWidth) / 2;
+  const py = player.renderY * TILE + TILE - drawHeight - 3;
+
+  context.drawImage(
+    spriteSheet,
+    sourceX,
+    sourceY,
+    spriteWidth,
+    spriteHeight,
+    px,
+    py,
+    drawWidth,
+    drawHeight,
   );
 }
 
@@ -286,7 +488,7 @@ function removeGreenScreen(source: HTMLImageElement) {
     const green = data[index + 1];
     const blue = data[index + 2];
 
-    if (green > 220 && red < 80 && blue < 80) {
+    if (green > 210 && red < 100 && blue < 100) {
       data[index + 3] = 0;
     }
   }
@@ -295,44 +497,33 @@ function removeGreenScreen(source: HTMLImageElement) {
   return canvas;
 }
 
-function drawPlayerShadow(context: CanvasRenderingContext2D, tileX: number, tileY: number) {
-  const centerX = tileX * TILE + TILE / 2;
-  const centerY = tileY * TILE + TILE - 7;
-
-  context.fillStyle = 'rgba(26, 29, 22, 0.18)';
+function fillRoundedRect(
+  context: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  radius: number,
+) {
+  const clampedRadius = Math.min(radius, width / 2, height / 2);
   context.beginPath();
-  context.ellipse(centerX, centerY, 12, 6, 0, 0, Math.PI * 2);
+  context.moveTo(x + clampedRadius, y);
+  context.arcTo(x + width, y, x + width, y + height, clampedRadius);
+  context.arcTo(x + width, y + height, x, y + height, clampedRadius);
+  context.arcTo(x, y + height, x, y, clampedRadius);
+  context.arcTo(x, y, x + width, y, clampedRadius);
+  context.closePath();
   context.fill();
 }
 
-function drawPlayerSprite(
-  context: CanvasRenderingContext2D,
-  spriteSheet: HTMLCanvasElement,
-  tileX: number,
-  tileY: number,
-  facing: Direction,
-) {
-  const spriteWidth = spriteSheet.width / 2;
-  const spriteHeight = spriteSheet.height / 2;
-  const frame = SPRITE_ORDER[facing];
-  const sourceX = frame.col * spriteWidth;
-  const sourceY = frame.row * spriteHeight;
-  const drawWidth = 42;
-  const drawHeight = 42;
-  const px = tileX * TILE + (TILE - drawWidth) / 2;
-  const py = tileY * TILE + TILE - drawHeight - 2;
-
-  context.drawImage(
-    spriteSheet,
-    sourceX,
-    sourceY,
-    spriteWidth,
-    spriteHeight,
-    px,
-    py,
-    drawWidth,
-    drawHeight,
-  );
+function forEachTile(tileType: TileType, callback: (x: number, y: number) => void) {
+  for (let y = 0; y < MAP_HEIGHT; y += 1) {
+    for (let x = 0; x < MAP_WIDTH; x += 1) {
+      if (MAP[y][x] === tileType) {
+        callback(x, y);
+      }
+    }
+  }
 }
 
 function attemptMove(player: PlayerState, move: MoveIntent, timestamp: number): PlayerState {
@@ -371,6 +562,11 @@ function directionToMove(direction: Direction): MoveIntent | null {
 
 function lerp(start: number, end: number, progress: number) {
   return start + (end - start) * progress;
+}
+
+function isPathLike(x: number, y: number) {
+  const tile = MAP[y]?.[x];
+  return tile === 'path' || tile === 'door';
 }
 
 export default App;
