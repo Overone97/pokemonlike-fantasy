@@ -1,8 +1,8 @@
 :root {
-  font-family: 'Trebuchet MS', 'Segoe UI', sans-serif;
-  color: #2e2340;
+  font-family: 'Verdana', 'Trebuchet MS', sans-serif;
+  color: #223522;
   background:
-    radial-gradient(circle at top, #fff7d1 0%, #ffe8f7 35%, #d9f2ff 100%);
+    radial-gradient(circle at top, #fff9d2 0%, #f5f1c3 18%, #bfe6c2 48%, #89bce7 100%);
 }
 
 * {
@@ -23,38 +23,44 @@ body {
   display: grid;
   place-items: center;
   gap: 24px;
-  padding: 32px 16px 48px;
+  padding: 28px 16px 44px;
+  background:
+    radial-gradient(circle at 20% 20%, rgba(255, 252, 220, 0.72), transparent 30%),
+    radial-gradient(circle at 80% 10%, rgba(255, 220, 198, 0.45), transparent 24%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0));
 }
 
 .intro-card {
-  width: min(860px, 100%);
+  width: min(900px, 100%);
   padding: 24px 28px;
   border-radius: 28px;
-  background: rgba(255, 252, 245, 0.8);
-  border: 2px solid rgba(133, 96, 170, 0.22);
-  box-shadow: 0 18px 50px rgba(88, 64, 114, 0.12);
-  backdrop-filter: blur(12px);
+  background: rgba(249, 247, 225, 0.84);
+  border: 3px solid rgba(134, 93, 49, 0.18);
+  box-shadow: 0 18px 50px rgba(44, 73, 34, 0.14);
+  backdrop-filter: blur(10px);
 }
 
 .eyebrow {
   margin: 0 0 8px;
-  font-size: 0.8rem;
+  font-size: 0.82rem;
   letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: #b46ea8;
+  color: #b85c42;
 }
 
 h1 {
   margin: 0;
-  font-size: clamp(2rem, 4vw, 3.6rem);
+  font-size: clamp(2.1rem, 4vw, 3.8rem);
   line-height: 0.95;
+  color: #274320;
+  text-shadow: 0 2px 0 rgba(255, 250, 223, 0.85);
 }
 
 .description {
-  max-width: 56ch;
+  max-width: 58ch;
   margin: 14px 0 0;
   font-size: 1rem;
-  line-height: 1.5;
+  line-height: 1.55;
 }
 
 .tips {
@@ -68,16 +74,18 @@ h1 {
 .tips span {
   padding: 10px 14px;
   border-radius: 999px;
-  background: rgba(255, 232, 247, 0.9);
+  background: rgba(255, 244, 204, 0.88);
+  border: 2px solid rgba(184, 129, 70, 0.16);
 }
 
 .game-frame {
-  width: min(860px, 100%);
+  width: min(900px, 100%);
   padding: 18px;
   border-radius: 32px;
-  background: linear-gradient(180deg, #fffdf6 0%, #f6efff 100%);
-  border: 3px solid rgba(120, 83, 159, 0.24);
-  box-shadow: 0 24px 70px rgba(62, 44, 92, 0.18);
+  background:
+    linear-gradient(180deg, rgba(255, 253, 234, 0.94) 0%, rgba(226, 242, 222, 0.95) 100%);
+  border: 4px solid rgba(96, 132, 69, 0.22);
+  box-shadow: 0 24px 70px rgba(30, 70, 40, 0.2);
 }
 
 canvas {
@@ -85,14 +93,14 @@ canvas {
   height: auto;
   display: block;
   border-radius: 20px;
-  border: 4px solid #fff7fb;
-  background: #95dd81;
+  border: 4px solid #f7f1cf;
+  background: #8ad070;
   image-rendering: pixelated;
 }
 
 @media (max-width: 720px) {
   .app-shell {
-    padding: 20px 10px 32px;
+    padding: 18px 10px 28px;
   }
 
   .intro-card,
