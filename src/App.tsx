@@ -3,9 +3,24 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 const TILE = 48;
 const MAP_WIDTH = 16;
 const MAP_HEIGHT = 12;
+const STEP_DURATION_MS = 170;
 
 type Direction = 'up' | 'down' | 'left' | 'right';
 type TileType = 'grass' | 'path' | 'fence' | 'flowers' | 'water' | 'houseWall' | 'houseRoof' | 'door';
+type MoveIntent = { dx: number; dy: number; facing: Direction };
+type PlayerState = {
+  tileX: number;
+  tileY: number;
+  renderX: number;
+  renderY: number;
+  startX: number;
+  startY: number;
+  targetX: number;
+  targetY: number;
+  facing: Direction;
+  moving: boolean;
+  moveStartTime: number;
+};
 
 const MAP: TileType[][] = [
   ['grass', 'grass', 'grass', 'grass', 'flowers', 'grass', 'grass', 'grass', 'grass', 'grass', 'grass', 'flowers', 'grass', 'grass', 'grass', 'grass'],
@@ -23,10 +38,37 @@ const MAP: TileType[][] = [
 ];
 
 const BLOCKING_TILES = new Set<TileType>(['water', 'fence', 'houseWall', 'houseRoof']);
+const MOVEMENT_KEYS: Record<string, MoveIntent> = {
+  arrowup: { dx: 0, dy: -1, facing: 'up' },
+  z: { dx: 0, dy: -1, facing: 'up' },
+  w: { dx: 0, dy: -1, facing: 'up' },
+  arrowdown: { dx: 0, dy: 1, facing: 'down' },
+  s: { dx: 0, dy: 1, facing: 'down' },
+  arrowleft: { dx: -1, dy: 0, facing: 'left' },
+  q: { dx: -1, dy: 0, facing: 'left' },
+  a: { dx: -1, dy: 0, facing: 'left' },
+  arrowright: { dx: 1, dy: 0, facing: 'right' },
+  d: { dx: 1, dy: 0, facing: 'right' },
+};
 
 function App() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const [player, setPlayer] = useState({ x: 7, y: 7, facing: 'down' as Direction });
+  const [player, setPlayer] = useState<PlayerState>({
+    tileX: 7,
+    tileY: 7,
+    renderX: 7,
+    renderY: 7,
+    startX: 7,
+    startY: 7,
+    targetX: 7,
+    targetY: 7,
+    facing: 'down',
+    moving: false,
+    moveStartTime: 0,
+  });
+  const heldDirectionRef = useRef<Direction | null>(null);
+  const bufferedDirectionRef = useRef<Direction | null>(null);
+  const playerRef = useRef(player);
 
   const canvasSize = useMemo(
     () => ({ width: MAP_WIDTH * TILE, height: MAP_HEIGHT * TILE }),
@@ -34,48 +76,101 @@ function App() {
   );
 
   useEffect(() => {
+    playerRef.current = player;
+  }, [player]);
+
+  useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const key = event.key.toLowerCase();
-      const movement: Record<string, { dx: number; dy: number; facing: Direction }> = {
-        arrowup: { dx: 0, dy: -1, facing: 'up' },
-        z: { dx: 0, dy: -1, facing: 'up' },
-        w: { dx: 0, dy: -1, facing: 'up' },
-        arrowdown: { dx: 0, dy: 1, facing: 'down' },
-        s: { dx: 0, dy: 1, facing: 'down' },
-        arrowleft: { dx: -1, dy: 0, facing: 'left' },
-        q: { dx: -1, dy: 0, facing: 'left' },
-        a: { dx: -1, dy: 0, facing: 'left' },
-        arrowright: { dx: 1, dy: 0, facing: 'right' },
-        d: { dx: 1, dy: 0, facing: 'right' },
-      };
-
-      const nextMove = movement[key];
+      const nextMove = MOVEMENT_KEYS[key];
       if (!nextMove) return;
 
       event.preventDefault();
+      heldDirectionRef.current = nextMove.facing;
+      bufferedDirectionRef.current = nextMove.facing;
 
       setPlayer((current) => {
-        const nextX = current.x + nextMove.dx;
-        const nextY = current.y + nextMove.dy;
-        const nextTile = MAP[nextY]?.[nextX];
-
-        if (
-          nextX < 0 ||
-          nextY < 0 ||
-          nextX >= MAP_WIDTH ||
-          nextY >= MAP_HEIGHT ||
-          !nextTile ||
-          BLOCKING_TILES.has(nextTile)
-        ) {
-          return { ...current, facing: nextMove.facing };
+        if (current.moving) {
+          return current.facing === nextMove.facing
+            ? current
+            : { ...current, facing: nextMove.facing };
         }
 
-        return { x: nextX, y: nextY, facing: nextMove.facing };
+        return attemptMove(current, nextMove, performance.now());
       });
     };
 
+    const onKeyUp = (event: KeyboardEvent) => {
+      const key = event.key.toLowerCase();
+      const move = MOVEMENT_KEYS[key];
+      if (!move) return;
+
+      if (heldDirectionRef.current === move.facing) {
+        heldDirectionRef.current = null;
+      }
+      if (bufferedDirectionRef.current === move.facing) {
+        bufferedDirectionRef.current = null;
+      }
+    };
+
     window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
+    };
+  }, []);
+
+  useEffect(() => {
+    let animationFrameId = 0;
+
+    const tick = (timestamp: number) => {
+      setPlayer((current) => {
+        if (!current.moving) {
+          const nextDirection = bufferedDirectionRef.current ?? heldDirectionRef.current;
+          if (!nextDirection) return current;
+          const nextMove = directionToMove(nextDirection);
+          return nextMove ? attemptMove(current, nextMove, timestamp) : current;
+        }
+
+        const elapsed = timestamp - current.moveStartTime;
+        const progress = Math.min(elapsed / STEP_DURATION_MS, 1);
+        const nextRenderX = lerp(current.startX, current.targetX, progress);
+        const nextRenderY = lerp(current.startY, current.targetY, progress);
+
+        if (progress < 1) {
+          return {
+            ...current,
+            renderX: nextRenderX,
+            renderY: nextRenderY,
+          };
+        }
+
+        const settledState: PlayerState = {
+          ...current,
+          tileX: current.targetX,
+          tileY: current.targetY,
+          renderX: current.targetX,
+          renderY: current.targetY,
+          startX: current.targetX,
+          startY: current.targetY,
+          moving: false,
+        };
+
+        const nextDirection = bufferedDirectionRef.current ?? heldDirectionRef.current;
+        if (!nextDirection) {
+          return settledState;
+        }
+
+        const nextMove = directionToMove(nextDirection);
+        return nextMove ? attemptMove(settledState, nextMove, timestamp) : settledState;
+      });
+
+      animationFrameId = window.requestAnimationFrame(tick);
+    };
+
+    animationFrameId = window.requestAnimationFrame(tick);
+    return () => window.cancelAnimationFrame(animationFrameId);
   }, []);
 
   useEffect(() => {
@@ -92,8 +187,8 @@ function App() {
       }
     }
 
-    drawShadow(context, player.x, player.y);
-    drawPlayer(context, player.x, player.y, player.facing);
+    drawShadow(context, player.renderX, player.renderY);
+    drawPlayer(context, player.renderX, player.renderY, player.facing);
   }, [player]);
 
   return (
@@ -107,7 +202,7 @@ function App() {
         </p>
         <div className="tips">
           <span>Déplacement: flèches, ZQSD ou WASD</span>
-          <span>Direction: le perso pivote même si tu bloques contre un mur</span>
+          <span>Le perso glisse maintenant d’une case à l’autre comme dans Pokemon</span>
         </div>
       </section>
 
@@ -121,6 +216,44 @@ function App() {
       </section>
     </main>
   );
+}
+
+function attemptMove(player: PlayerState, move: MoveIntent, timestamp: number): PlayerState {
+  const nextX = player.tileX + move.dx;
+  const nextY = player.tileY + move.dy;
+  const nextTile = MAP[nextY]?.[nextX];
+
+  if (
+    nextX < 0 ||
+    nextY < 0 ||
+    nextX >= MAP_WIDTH ||
+    nextY >= MAP_HEIGHT ||
+    !nextTile ||
+    BLOCKING_TILES.has(nextTile)
+  ) {
+    return player.facing === move.facing ? player : { ...player, facing: move.facing };
+  }
+
+  return {
+    ...player,
+    facing: move.facing,
+    startX: player.tileX,
+    startY: player.tileY,
+    targetX: nextX,
+    targetY: nextY,
+    renderX: player.tileX,
+    renderY: player.tileY,
+    moving: true,
+    moveStartTime: timestamp,
+  };
+}
+
+function directionToMove(direction: Direction): MoveIntent | null {
+  return Object.values(MOVEMENT_KEYS).find((move) => move.facing === direction) ?? null;
+}
+
+function lerp(start: number, end: number, progress: number) {
+  return start + (end - start) * progress;
 }
 
 function drawTile(context: CanvasRenderingContext2D, tile: TileType, x: number, y: number) {
