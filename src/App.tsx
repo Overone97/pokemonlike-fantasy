@@ -5,7 +5,7 @@ const STEP_DURATION_MS = 170;
 const TELEPORT_COOLDOWN_MS = 220;
 
 const ASSET_SOURCES = {
-  player: '/pokemonlike-fantasy/assets/generated/pack2/player-walk-sheet-v2-chroma.png',
+  player: '/pokemonlike-fantasy/assets/generated/pack2/player-walk-sheet-v3-chroma.png',
   house: '/pokemonlike-fantasy/assets/generated/pack2/house-chroma.png',
   tree: '/pokemonlike-fantasy/assets/generated/pack2/tree-chroma.png',
   pond: '/pokemonlike-fantasy/assets/generated/pack2/pond-chroma.png',
@@ -323,8 +323,8 @@ function App() {
   return (
     <main className="app-shell">
       <section className="intro-card">
-        <p className="eyebrow">{game.sceneId === 'outdoor' ? 'Round 3' : 'Intérieur'}</p>
-        <h1>Herbes hautes, profondeur et maison jouable</h1>
+        <p className="eyebrow">{game.sceneId === 'outdoor' ? 'Round 3 stable' : 'Intérieur'}</p>
+        <h1>Direction plus propre, gameplay stable</h1>
         <p className="description">{currentScene.subtitle}</p>
         <div className="tips">
           <span>Déplacement: flèches, ZQSD ou WASD</span>
@@ -415,9 +415,9 @@ function drawOutdoorGround(context: CanvasRenderingContext2D, map: TileType[][])
   const width = getSceneWidthFromMap(map) * TILE;
   const height = getSceneHeightFromMap(map) * TILE;
   const sky = context.createLinearGradient(0, 0, 0, height);
-  sky.addColorStop(0, '#dff2ff');
-  sky.addColorStop(0.26, '#ddf7d5');
-  sky.addColorStop(1, '#9ddc6c');
+  sky.addColorStop(0, '#ddf4ff');
+  sky.addColorStop(0.24, '#dff6d7');
+  sky.addColorStop(1, '#a6dc79');
   context.fillStyle = sky;
   context.fillRect(0, 0, width, height);
 
@@ -428,20 +428,15 @@ function drawOutdoorGround(context: CanvasRenderingContext2D, map: TileType[][])
       const py = y * TILE;
       const fill = context.createLinearGradient(px, py, px, py + TILE);
 
-      if (tile === 'tallGrass') {
-        fill.addColorStop(0, '#8fe16c');
-        fill.addColorStop(1, '#4fa34a');
-      } else {
-        fill.addColorStop(0, '#9be274');
-        fill.addColorStop(1, '#68b956');
-      }
+      fill.addColorStop(0, tile === 'tallGrass' ? '#94df71' : '#9ce173');
+      fill.addColorStop(1, tile === 'tallGrass' ? '#59ad4e' : '#6dbe58');
 
       context.fillStyle = fill;
       fillRoundedRect(context, px, py, TILE, TILE, 14);
 
       context.fillStyle =
         tile === 'tallGrass'
-          ? 'rgba(28, 92, 34, 0.12)'
+          ? 'rgba(73, 129, 56, 0.16)'
           : (x + y) % 2 === 0
             ? 'rgba(241,255,207,0.14)'
             : 'rgba(57,114,48,0.07)';
@@ -532,19 +527,19 @@ function drawTallGrassBase(context: CanvasRenderingContext2D, map: TileType[][])
     const px = x * TILE;
     const py = y * TILE;
 
-    context.fillStyle = 'rgba(47, 128, 52, 0.28)';
+    context.fillStyle = 'rgba(53, 123, 48, 0.2)';
     context.beginPath();
-    context.ellipse(px + TILE / 2, py + 35, 17, 9, 0, 0, Math.PI * 2);
+    context.ellipse(px + TILE / 2, py + 36, 16, 8, 0, 0, Math.PI * 2);
     context.fill();
 
-    for (let blade = 0; blade < 6; blade += 1) {
-      const bladeX = px + 8 + blade * 6;
-      const bladeHeight = 14 + (blade % 3) * 4;
-      context.strokeStyle = blade % 2 === 0 ? '#2d8d3e' : '#65c852';
-      context.lineWidth = 3;
+    for (let blade = 0; blade < 5; blade += 1) {
+      const bladeX = px + 10 + blade * 7;
+      const bladeHeight = 12 + (blade % 2) * 4;
+      context.strokeStyle = blade % 2 === 0 ? '#4aa24a' : '#7ad364';
+      context.lineWidth = 2.5;
       context.beginPath();
-      context.moveTo(bladeX, py + 40);
-      context.quadraticCurveTo(bladeX - 3, py + 40 - bladeHeight / 2, bladeX + 2, py + 40 - bladeHeight);
+      context.moveTo(bladeX, py + 41);
+      context.quadraticCurveTo(bladeX - 2, py + 41 - bladeHeight / 2, bladeX + 1, py + 41 - bladeHeight);
       context.stroke();
     }
   });
@@ -556,24 +551,23 @@ function drawTallGrassOverlay(
   player: PlayerState,
 ) {
   forEachTile(map, 'tallGrass', (x, y) => {
-    const isNearPlayer =
-      Math.abs(player.renderX - x) < 0.9 && Math.abs(player.renderY - y) < 0.9;
+    const isNearPlayer = Math.round(player.renderX) === x && Math.round(player.renderY) === y;
 
     if (!isNearPlayer) return;
 
     const px = x * TILE;
     const py = y * TILE;
     context.save();
-    context.globalAlpha = 0.9;
+    context.globalAlpha = 0.82;
 
-    for (let blade = 0; blade < 7; blade += 1) {
-      const bladeX = px + 6 + blade * 5.5;
-      const bladeHeight = 18 + (blade % 4) * 3;
-      context.strokeStyle = blade % 2 === 0 ? '#6dd45f' : '#3d9f45';
-      context.lineWidth = 3.2;
+    for (let blade = 0; blade < 6; blade += 1) {
+      const bladeX = px + 8 + blade * 6;
+      const bladeHeight = 16 + (blade % 3) * 3;
+      context.strokeStyle = blade % 2 === 0 ? '#73d95f' : '#4ba44c';
+      context.lineWidth = 3;
       context.beginPath();
       context.moveTo(bladeX, py + 42);
-      context.quadraticCurveTo(bladeX - 4, py + 42 - bladeHeight / 2, bladeX + 1, py + 42 - bladeHeight);
+      context.quadraticCurveTo(bladeX - 2, py + 42 - bladeHeight / 2, bladeX + 1, py + 42 - bladeHeight);
       context.stroke();
     }
 
@@ -851,12 +845,32 @@ function drawPlayerSprite(
 ) {
   const spriteWidth = spriteSheet.width / 3;
   const spriteHeight = spriteSheet.height / 4;
-  const row = SPRITE_ROWS[player.facing];
+  const mirroredRight = player.facing === 'right';
+  const row = SPRITE_ROWS[mirroredRight ? 'left' : player.facing];
   const column = player.moving ? [0, 1, 2][Math.floor(performance.now() / 110) % 3] : 1;
   const sourceX = column * spriteWidth;
   const sourceY = row * spriteHeight;
   const px = player.renderX * TILE + (TILE - drawWidth) / 2;
   const py = player.renderY * TILE + TILE - drawHeight - 3;
+
+  if (mirroredRight) {
+    context.save();
+    context.translate(px + drawWidth, py);
+    context.scale(-1, 1);
+    context.drawImage(
+      spriteSheet,
+      sourceX,
+      sourceY,
+      spriteWidth,
+      spriteHeight,
+      0,
+      0,
+      drawWidth,
+      drawHeight,
+    );
+    context.restore();
+    return;
+  }
 
   context.drawImage(
     spriteSheet,
