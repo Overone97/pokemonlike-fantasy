@@ -5,7 +5,7 @@ const STEP_DURATION_MS = 170;
 const TELEPORT_COOLDOWN_MS = 220;
 
 const ASSET_SOURCES = {
-  player: '/pokemonlike-fantasy/assets/generated/pack2/player-walk-sheet-v3-chroma.png',
+  player: '/pokemonlike-fantasy/assets/generated/pack2/player-walk-sheet-v2-chroma.png',
   house: '/pokemonlike-fantasy/assets/generated/pack2/house-chroma.png',
   tree: '/pokemonlike-fantasy/assets/generated/pack2/tree-chroma.png',
   pond: '/pokemonlike-fantasy/assets/generated/pack2/pond-chroma.png',
@@ -105,7 +105,7 @@ const INTERIOR_MAP: TileType[][] = [
 const SCENES: Record<SceneId, SceneConfig> = {
   outdoor: {
     title: 'Extérieur du village',
-    subtitle: 'Herbes hautes, profondeur de décor et maison traversable',
+    subtitle: 'Retour a une direction plus rigide et plus lisible, avec la maison toujours traversable',
     map: OUTDOOR_MAP,
     doorways: [{ x: 7, y: 4, targetScene: 'interior', spawnX: 4, spawnY: 6, facing: 'up' }],
   },
@@ -323,8 +323,8 @@ function App() {
   return (
     <main className="app-shell">
       <section className="intro-card">
-        <p className="eyebrow">{game.sceneId === 'outdoor' ? 'Round 3 stable' : 'Intérieur'}</p>
-        <h1>Direction plus propre, gameplay stable</h1>
+        <p className="eyebrow">{game.sceneId === 'outdoor' ? 'Passe rigide' : 'Intérieur'}</p>
+        <h1>Retour a la passe qui tenait debout</h1>
         <p className="description">{currentScene.subtitle}</p>
         <div className="tips">
           <span>Déplacement: flèches, ZQSD ou WASD</span>
@@ -847,7 +847,8 @@ function drawPlayerSprite(
   const spriteHeight = spriteSheet.height / 4;
   const mirroredRight = player.facing === 'right';
   const row = SPRITE_ROWS[mirroredRight ? 'left' : player.facing];
-  const column = player.moving ? [0, 1, 2][Math.floor(performance.now() / 110) % 3] : 1;
+  // Keep the player locked on the clean center pose instead of AI walk in-betweens.
+  const column = 1;
   const sourceX = column * spriteWidth;
   const sourceY = row * spriteHeight;
   const px = player.renderX * TILE + (TILE - drawWidth) / 2;
