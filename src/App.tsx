@@ -5,7 +5,7 @@ const STEP_DURATION_MS = 170;
 const TELEPORT_COOLDOWN_MS = 220;
 
 const ASSET_SOURCES = {
-  player: '/pokemonlike-fantasy/assets/generated/pack2/player-walk-sheet-v2-chroma.png',
+  player: '/pokemonlike-fantasy/assets/generated/player-sheet-chroma.png',
   house: '/pokemonlike-fantasy/assets/generated/pack2/house-chroma.png',
   tree: '/pokemonlike-fantasy/assets/generated/pack2/tree-chroma.png',
   pond: '/pokemonlike-fantasy/assets/generated/pack2/pond-chroma.png',
@@ -145,11 +145,11 @@ const MOVEMENT_KEYS: Record<string, MoveIntent> = {
   d: { dx: 1, dy: 0, facing: 'right' },
 };
 
-const SPRITE_ROWS: Record<Direction, number> = {
-  down: 0,
-  left: 1,
-  right: 2,
-  up: 3,
+const SPRITE_ORDER: Record<Direction, { col: number; row: number }> = {
+  down: { col: 0, row: 0 },
+  right: { col: 1, row: 0 },
+  left: { col: 0, row: 1 },
+  up: { col: 1, row: 1 },
 };
 
 function App() {
@@ -843,35 +843,13 @@ function drawPlayerSprite(
   drawWidth: number,
   drawHeight: number,
 ) {
-  const spriteWidth = spriteSheet.width / 3;
-  const spriteHeight = spriteSheet.height / 4;
-  const mirroredRight = player.facing === 'right';
-  const row = SPRITE_ROWS[mirroredRight ? 'left' : player.facing];
-  // Keep the player locked on the clean center pose instead of AI walk in-betweens.
-  const column = 1;
-  const sourceX = column * spriteWidth;
-  const sourceY = row * spriteHeight;
+  const spriteWidth = spriteSheet.width / 2;
+  const spriteHeight = spriteSheet.height / 2;
+  const frame = SPRITE_ORDER[player.facing];
+  const sourceX = frame.col * spriteWidth;
+  const sourceY = frame.row * spriteHeight;
   const px = player.renderX * TILE + (TILE - drawWidth) / 2;
   const py = player.renderY * TILE + TILE - drawHeight - 3;
-
-  if (mirroredRight) {
-    context.save();
-    context.translate(px + drawWidth, py);
-    context.scale(-1, 1);
-    context.drawImage(
-      spriteSheet,
-      sourceX,
-      sourceY,
-      spriteWidth,
-      spriteHeight,
-      0,
-      0,
-      drawWidth,
-      drawHeight,
-    );
-    context.restore();
-    return;
-  }
 
   context.drawImage(
     spriteSheet,
