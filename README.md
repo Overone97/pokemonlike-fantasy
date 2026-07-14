@@ -1,8 +1,8 @@
 # Pokemonlike Fantasy
 
-Petit prototype de jeu 2D vue du dessus, dans une vibe mignonne fantastique.
+Restart complet du prototype.
 
-## Lancer en local
+## Lancer
 
 ```bash
 npm install
