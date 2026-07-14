@@ -23,21 +23,32 @@ const CREATURE_BODY_WIDTH = 24;
 const CREATURE_BODY_HEIGHT = 22;
 const INTERACT_KEY = 'e';
 const SHINY_RATE = 0.01;
+const EVOLUTION_VICTORIES_REQUIRED = 3;
 
 type Direction = 'up' | 'down' | 'left' | 'right';
 type MapId = 'outside' | 'inside' | 'south';
 type CreatureTemplateId = 'brindibouh' | 'galetout' | 'bullefroth';
 type CreatureSpeciesId =
   | 'brindibouh'
+  | 'ramureine'
   | 'mousseron'
+  | 'floramuse'
   | 'emberet'
+  | 'pyrogriffe'
   | 'cendrours'
+  | 'volcarnage'
   | 'bullefroth'
+  | 'abyssobulle'
   | 'algobulle'
+  | 'coralythe'
   | 'galetout'
+  | 'bastionyx'
   | 'silexou'
+  | 'monolithe'
   | 'voltlynx'
+  | 'fulguroc'
   | 'orageon'
+  | 'tempestor'
   | 'florazel'
   | 'noctplume'
   | 'spectrik'
@@ -138,7 +149,24 @@ type CreatureSpecies = {
   saturationBoost: number;
   lightnessBoost: number;
   shinyHueShift: number;
+  evolutionStage: 1 | 2;
+  evolvesTo?: CreatureSpeciesId;
+  evolvesFrom?: CreatureSpeciesId;
+  visualVariant?: CreatureVisualVariant;
+  sizeScale?: number;
 };
+type CreatureVisualVariant =
+  | 'none'
+  | 'ramureine'
+  | 'floramuse'
+  | 'pyrogriffe'
+  | 'volcarnage'
+  | 'abyssobulle'
+  | 'coralythe'
+  | 'bastionyx'
+  | 'monolithe'
+  | 'fulguroc'
+  | 'tempestor';
 type CreatureAsset = {
   normalSheet: HTMLCanvasElement;
   shinySheet: HTMLCanvasElement;
@@ -151,6 +179,7 @@ type CapturedCreature = {
   speciesName: string;
   shiny: boolean;
   iv: number;
+  victories: number;
 };
 type CreatureInstance = {
   id: number;
@@ -242,6 +271,26 @@ const CREATURE_SPECIES: Record<CreatureSpeciesId, CreatureSpecies> = {
     saturationBoost: 0,
     lightnessBoost: 0,
     shinyHueShift: 0.35,
+    evolutionStage: 1,
+    evolvesTo: 'ramureine',
+    visualVariant: 'none',
+    sizeScale: 1,
+  },
+  ramureine: {
+    id: 'ramureine',
+    name: 'Ramureine',
+    templateId: 'brindibouh',
+    types: ['Plante', 'Fee'],
+    rarity: 'Rare',
+    encounterWeight: 6,
+    hueShift: 0.04,
+    saturationBoost: 0.1,
+    lightnessBoost: 0.08,
+    shinyHueShift: 0.49,
+    evolutionStage: 2,
+    evolvesFrom: 'brindibouh',
+    visualVariant: 'ramureine',
+    sizeScale: 1.16,
   },
   mousseron: {
     id: 'mousseron',
@@ -254,6 +303,26 @@ const CREATURE_SPECIES: Record<CreatureSpeciesId, CreatureSpecies> = {
     saturationBoost: 0.04,
     lightnessBoost: 0.03,
     shinyHueShift: 0.52,
+    evolutionStage: 1,
+    evolvesTo: 'floramuse',
+    visualVariant: 'none',
+    sizeScale: 1,
+  },
+  floramuse: {
+    id: 'floramuse',
+    name: 'Floramuse',
+    templateId: 'brindibouh',
+    types: ['Plante', 'Fee'],
+    rarity: 'Rare',
+    encounterWeight: 5,
+    hueShift: 0.15,
+    saturationBoost: 0.08,
+    lightnessBoost: 0.11,
+    shinyHueShift: 0.68,
+    evolutionStage: 2,
+    evolvesFrom: 'mousseron',
+    visualVariant: 'floramuse',
+    sizeScale: 1.15,
   },
   emberet: {
     id: 'emberet',
@@ -266,6 +335,26 @@ const CREATURE_SPECIES: Record<CreatureSpeciesId, CreatureSpecies> = {
     saturationBoost: 0.22,
     lightnessBoost: 0.02,
     shinyHueShift: 0.38,
+    evolutionStage: 1,
+    evolvesTo: 'pyrogriffe',
+    visualVariant: 'none',
+    sizeScale: 1,
+  },
+  pyrogriffe: {
+    id: 'pyrogriffe',
+    name: 'Pyrogriffe',
+    templateId: 'brindibouh',
+    types: ['Feu', 'Tenebres'],
+    rarity: 'Rare',
+    encounterWeight: 5,
+    hueShift: -0.12,
+    saturationBoost: 0.32,
+    lightnessBoost: 0.06,
+    shinyHueShift: 0.28,
+    evolutionStage: 2,
+    evolvesFrom: 'emberet',
+    visualVariant: 'pyrogriffe',
+    sizeScale: 1.15,
   },
   cendrours: {
     id: 'cendrours',
@@ -278,6 +367,26 @@ const CREATURE_SPECIES: Record<CreatureSpeciesId, CreatureSpecies> = {
     saturationBoost: 0.18,
     lightnessBoost: -0.03,
     shinyHueShift: 0.34,
+    evolutionStage: 1,
+    evolvesTo: 'volcarnage',
+    visualVariant: 'none',
+    sizeScale: 1,
+  },
+  volcarnage: {
+    id: 'volcarnage',
+    name: 'Volcarnage',
+    templateId: 'galetout',
+    types: ['Feu', 'Sol'],
+    rarity: 'Epique',
+    encounterWeight: 3,
+    hueShift: -0.11,
+    saturationBoost: 0.28,
+    lightnessBoost: -0.08,
+    shinyHueShift: 0.08,
+    evolutionStage: 2,
+    evolvesFrom: 'cendrours',
+    visualVariant: 'volcarnage',
+    sizeScale: 1.18,
   },
   bullefroth: {
     id: 'bullefroth',
@@ -290,6 +399,26 @@ const CREATURE_SPECIES: Record<CreatureSpeciesId, CreatureSpecies> = {
     saturationBoost: 0,
     lightnessBoost: 0,
     shinyHueShift: 0.48,
+    evolutionStage: 1,
+    evolvesTo: 'abyssobulle',
+    visualVariant: 'none',
+    sizeScale: 1,
+  },
+  abyssobulle: {
+    id: 'abyssobulle',
+    name: 'Abyssobulle',
+    templateId: 'bullefroth',
+    types: ['Eau', 'Spectre'],
+    rarity: 'Rare',
+    encounterWeight: 6,
+    hueShift: 0.58,
+    saturationBoost: 0.1,
+    lightnessBoost: -0.14,
+    shinyHueShift: 0.83,
+    evolutionStage: 2,
+    evolvesFrom: 'bullefroth',
+    visualVariant: 'abyssobulle',
+    sizeScale: 1.16,
   },
   algobulle: {
     id: 'algobulle',
@@ -302,6 +431,26 @@ const CREATURE_SPECIES: Record<CreatureSpeciesId, CreatureSpecies> = {
     saturationBoost: 0.08,
     lightnessBoost: -0.01,
     shinyHueShift: 0.44,
+    evolutionStage: 1,
+    evolvesTo: 'coralythe',
+    visualVariant: 'none',
+    sizeScale: 1,
+  },
+  coralythe: {
+    id: 'coralythe',
+    name: 'Coralythe',
+    templateId: 'bullefroth',
+    types: ['Eau', 'Plante'],
+    rarity: 'Rare',
+    encounterWeight: 5,
+    hueShift: 0.24,
+    saturationBoost: 0.15,
+    lightnessBoost: 0.02,
+    shinyHueShift: 0.63,
+    evolutionStage: 2,
+    evolvesFrom: 'algobulle',
+    visualVariant: 'coralythe',
+    sizeScale: 1.14,
   },
   galetout: {
     id: 'galetout',
@@ -314,6 +463,26 @@ const CREATURE_SPECIES: Record<CreatureSpeciesId, CreatureSpecies> = {
     saturationBoost: 0,
     lightnessBoost: 0,
     shinyHueShift: 0.58,
+    evolutionStage: 1,
+    evolvesTo: 'bastionyx',
+    visualVariant: 'none',
+    sizeScale: 1,
+  },
+  bastionyx: {
+    id: 'bastionyx',
+    name: 'Bastionyx',
+    templateId: 'galetout',
+    types: ['Roche', 'Acier'],
+    rarity: 'Rare',
+    encounterWeight: 5,
+    hueShift: 0.03,
+    saturationBoost: -0.04,
+    lightnessBoost: -0.02,
+    shinyHueShift: 0.69,
+    evolutionStage: 2,
+    evolvesFrom: 'galetout',
+    visualVariant: 'bastionyx',
+    sizeScale: 1.17,
   },
   silexou: {
     id: 'silexou',
@@ -326,6 +495,26 @@ const CREATURE_SPECIES: Record<CreatureSpeciesId, CreatureSpecies> = {
     saturationBoost: -0.06,
     lightnessBoost: 0.04,
     shinyHueShift: 0.61,
+    evolutionStage: 1,
+    evolvesTo: 'monolithe',
+    visualVariant: 'none',
+    sizeScale: 1,
+  },
+  monolithe: {
+    id: 'monolithe',
+    name: 'Monolithe',
+    templateId: 'galetout',
+    types: ['Roche', 'Acier'],
+    rarity: 'Epique',
+    encounterWeight: 3,
+    hueShift: 0.08,
+    saturationBoost: -0.1,
+    lightnessBoost: 0.08,
+    shinyHueShift: 0.81,
+    evolutionStage: 2,
+    evolvesFrom: 'silexou',
+    visualVariant: 'monolithe',
+    sizeScale: 1.18,
   },
   voltlynx: {
     id: 'voltlynx',
@@ -338,6 +527,26 @@ const CREATURE_SPECIES: Record<CreatureSpeciesId, CreatureSpecies> = {
     saturationBoost: 0.28,
     lightnessBoost: 0.1,
     shinyHueShift: 0.56,
+    evolutionStage: 1,
+    evolvesTo: 'fulguroc',
+    visualVariant: 'none',
+    sizeScale: 1,
+  },
+  fulguroc: {
+    id: 'fulguroc',
+    name: 'Fulguroc',
+    templateId: 'brindibouh',
+    types: ['Electrik', 'Acier'],
+    rarity: 'Rare',
+    encounterWeight: 5,
+    hueShift: -0.24,
+    saturationBoost: 0.36,
+    lightnessBoost: 0.14,
+    shinyHueShift: 0.73,
+    evolutionStage: 2,
+    evolvesFrom: 'voltlynx',
+    visualVariant: 'fulguroc',
+    sizeScale: 1.15,
   },
   orageon: {
     id: 'orageon',
@@ -350,6 +559,26 @@ const CREATURE_SPECIES: Record<CreatureSpeciesId, CreatureSpecies> = {
     saturationBoost: 0.22,
     lightnessBoost: 0.08,
     shinyHueShift: 0.63,
+    evolutionStage: 1,
+    evolvesTo: 'tempestor',
+    visualVariant: 'none',
+    sizeScale: 1,
+  },
+  tempestor: {
+    id: 'tempestor',
+    name: 'Tempestor',
+    templateId: 'bullefroth',
+    types: ['Electrik', 'Vol'],
+    rarity: 'Epique',
+    encounterWeight: 3,
+    hueShift: -0.28,
+    saturationBoost: 0.28,
+    lightnessBoost: 0.14,
+    shinyHueShift: 0.91,
+    evolutionStage: 2,
+    evolvesFrom: 'orageon',
+    visualVariant: 'tempestor',
+    sizeScale: 1.18,
   },
   florazel: {
     id: 'florazel',
@@ -362,6 +591,9 @@ const CREATURE_SPECIES: Record<CreatureSpeciesId, CreatureSpecies> = {
     saturationBoost: 0.18,
     lightnessBoost: 0.12,
     shinyHueShift: 0.67,
+    evolutionStage: 1,
+    visualVariant: 'none',
+    sizeScale: 1,
   },
   noctplume: {
     id: 'noctplume',
@@ -374,6 +606,9 @@ const CREATURE_SPECIES: Record<CreatureSpeciesId, CreatureSpecies> = {
     saturationBoost: -0.08,
     lightnessBoost: -0.18,
     shinyHueShift: 0.16,
+    evolutionStage: 1,
+    visualVariant: 'none',
+    sizeScale: 1,
   },
   spectrik: {
     id: 'spectrik',
@@ -386,6 +621,9 @@ const CREATURE_SPECIES: Record<CreatureSpeciesId, CreatureSpecies> = {
     saturationBoost: 0.12,
     lightnessBoost: -0.04,
     shinyHueShift: 0.1,
+    evolutionStage: 1,
+    visualVariant: 'none',
+    sizeScale: 1,
   },
   cristalune: {
     id: 'cristalune',
@@ -398,6 +636,9 @@ const CREATURE_SPECIES: Record<CreatureSpeciesId, CreatureSpecies> = {
     saturationBoost: 0.02,
     lightnessBoost: 0.2,
     shinyHueShift: 0.76,
+    evolutionStage: 1,
+    visualVariant: 'none',
+    sizeScale: 1,
   },
   bourbizon: {
     id: 'bourbizon',
@@ -410,6 +651,9 @@ const CREATURE_SPECIES: Record<CreatureSpeciesId, CreatureSpecies> = {
     saturationBoost: 0.08,
     lightnessBoost: -0.08,
     shinyHueShift: 0.4,
+    evolutionStage: 1,
+    visualVariant: 'none',
+    sizeScale: 1,
   },
   pyroloutre: {
     id: 'pyroloutre',
@@ -422,6 +666,9 @@ const CREATURE_SPECIES: Record<CreatureSpeciesId, CreatureSpecies> = {
     saturationBoost: 0.24,
     lightnessBoost: 0.02,
     shinyHueShift: 0.3,
+    evolutionStage: 1,
+    visualVariant: 'none',
+    sizeScale: 1,
   },
   ferabec: {
     id: 'ferabec',
@@ -434,6 +681,9 @@ const CREATURE_SPECIES: Record<CreatureSpeciesId, CreatureSpecies> = {
     saturationBoost: -0.12,
     lightnessBoost: 0.1,
     shinyHueShift: 0.72,
+    evolutionStage: 1,
+    visualVariant: 'none',
+    sizeScale: 1,
   },
   psykoto: {
     id: 'psykoto',
@@ -446,6 +696,9 @@ const CREATURE_SPECIES: Record<CreatureSpeciesId, CreatureSpecies> = {
     saturationBoost: 0.2,
     lightnessBoost: 0.08,
     shinyHueShift: 0.88,
+    evolutionStage: 1,
+    visualVariant: 'none',
+    sizeScale: 1,
   },
   dracombre: {
     id: 'dracombre',
@@ -458,6 +711,9 @@ const CREATURE_SPECIES: Record<CreatureSpeciesId, CreatureSpecies> = {
     saturationBoost: 0.06,
     lightnessBoost: -0.12,
     shinyHueShift: 0.21,
+    evolutionStage: 1,
+    visualVariant: 'none',
+    sizeScale: 1,
   },
   solenid: {
     id: 'solenid',
@@ -470,6 +726,9 @@ const CREATURE_SPECIES: Record<CreatureSpeciesId, CreatureSpecies> = {
     saturationBoost: 0.26,
     lightnessBoost: 0.16,
     shinyHueShift: 0.12,
+    evolutionStage: 1,
+    visualVariant: 'none',
+    sizeScale: 1,
   },
 };
 
@@ -833,14 +1092,14 @@ function App() {
     <main className="app-shell">
       <section className="intro-card">
         <p className="eyebrow">Proto fantasy</p>
-        <h1>Marchand, route sud, capture, IV et shiny</h1>
+        <h1>Marchand, route sud, affrontements et evolutions</h1>
         <p className="description">
-          Le perso est plus petit, le marchand rachate ton poisson, et la route du sud ouvre enfin la
-          chasse aux creatures roamantes avec IV et versions shiny.
+          Le marchand est en place, la route du sud fourmille de creatures, et 10 lignées peuvent
+          maintenant entrer en ascension avec un design evolue bien distinct.
         </p>
         <div className="tips">
           <span>Deplacement: fleches, ZQSD ou WASD</span>
-          <span>Action: E pour pecher, vendre ou capturer</span>
+          <span>Action: E pour pecher, vendre ou engager une creature</span>
           <span>Duel: 1 Frappe, 2 Sceau, 3 Repli</span>
           <span>Carte actuelle: {map.name}</span>
         </div>
@@ -868,6 +1127,9 @@ function App() {
             <p className="hud-stat">
               Meneur: {activeBinder.shiny ? 'Shiny ' : ''}
               {activeBinder.speciesName} {activeBinder.iv}% IV
+              {CREATURE_SPECIES[activeBinder.speciesId].evolvesTo
+                ? ` | Ascension ${Math.min(activeBinder.victories, EVOLUTION_VICTORIES_REQUIRED)}/${EVOLUTION_VICTORIES_REQUIRED}`
+                : ' | Forme finale'}
             </p>
           ) : null}
         </div>
@@ -960,8 +1222,9 @@ function createTemplateAsset(source: HTMLImageElement): CreatureAsset {
 }
 
 function createSpeciesAsset(baseAsset: CreatureAsset, species: CreatureSpecies): CreatureAsset {
+  const remixedSheet = remixCreatureSheet(baseAsset.normalSheet, baseAsset.frames, species.visualVariant ?? 'none');
   const normalSheet = shiftSheetHue(
-    baseAsset.normalSheet,
+    remixedSheet,
     species.hueShift,
     species.saturationBoost,
     species.lightnessBoost,
@@ -1066,11 +1329,13 @@ function drawMerchant(context: CanvasRenderingContext2D, assets: LoadedAssets, m
 
 function drawCreature(context: CanvasRenderingContext2D, assets: LoadedAssets, creature: CreatureInstance) {
   const asset = assets.creatures[creature.speciesId];
+  const species = CREATURE_SPECIES[creature.speciesId];
   const frames = asset.frames[creature.facing];
   const frameIndex = creature.moving ? Math.floor(performance.now() / 150) % frames.length : 1;
   const frame = frames[frameIndex];
   const sheet = creature.shiny ? asset.shinySheet : asset.normalSheet;
-  const scale = Math.min(CREATURE_TARGET_HEIGHT / frame.height, CREATURE_TARGET_WIDTH / frame.width);
+  const scale =
+    Math.min(CREATURE_TARGET_HEIGHT / frame.height, CREATURE_TARGET_WIDTH / frame.width) * (species.sizeScale ?? 1);
   const drawWidth = Math.round(frame.width * scale);
   const drawHeight = Math.round(frame.height * scale);
 
@@ -1195,6 +1460,8 @@ function drawBattleOverlay(context: CanvasRenderingContext2D, assets: LoadedAsse
   const wildFrame = wildAsset.frames.right[1];
   const allySheet = ally.shiny ? allyAsset.shinySheet : allyAsset.normalSheet;
   const wildSheet = wild.shiny ? wildAsset.shinySheet : wildAsset.normalSheet;
+  const allySpecies = CREATURE_SPECIES[ally.speciesId];
+  const wildSpecies = CREATURE_SPECIES[wild.speciesId];
 
   context.save();
   context.fillStyle = 'rgba(10, 18, 10, 0.58)';
@@ -1210,20 +1477,33 @@ function drawBattleOverlay(context: CanvasRenderingContext2D, assets: LoadedAsse
   context.font = '700 30px Georgia';
   context.fillText('Affrontement sauvage', 106, 126);
 
-  drawBattleCreatureCard(context, ally.speciesName, ally.iv, allyVigor, allyMaxVigor, 114, 174, false);
   drawBattleCreatureCard(
     context,
-    `${wild.shiny ? 'Shiny ' : ''}${CREATURE_SPECIES[wild.speciesId].name}`,
+    ally.speciesName,
+    ally.iv,
+    allyVigor,
+    allyMaxVigor,
+    114,
+    174,
+    false,
+    allySpecies.evolvesTo ? ally.victories : null,
+  );
+  drawBattleCreatureCard(
+    context,
+    `${wild.shiny ? 'Shiny ' : ''}${wildSpecies.name}`,
     wild.iv,
     wildVigor,
     wildMaxVigor,
     518,
     174,
     true,
+    null,
   );
 
-  context.drawImage(allySheet, allyFrame.x, allyFrame.y, allyFrame.width, allyFrame.height, 132, 264, 144, 144);
-  context.drawImage(wildSheet, wildFrame.x, wildFrame.y, wildFrame.width, wildFrame.height, 636, 214, 144, 144);
+  const allyBattleSize = Math.round(144 * (allySpecies.sizeScale ?? 1));
+  const wildBattleSize = Math.round(144 * (wildSpecies.sizeScale ?? 1));
+  context.drawImage(allySheet, allyFrame.x, allyFrame.y, allyFrame.width, allyFrame.height, 132, 264, allyBattleSize, allyBattleSize);
+  context.drawImage(wildSheet, wildFrame.x, wildFrame.y, wildFrame.width, wildFrame.height, 636, 214, wildBattleSize, wildBattleSize);
 
   context.fillStyle = '#324926';
   context.font = '600 18px Georgia';
@@ -1244,6 +1524,7 @@ function drawBattleCreatureCard(
   x: number,
   y: number,
   alignRight: boolean,
+  victories: number | null,
 ) {
   context.fillStyle = 'rgba(255, 249, 232, 0.96)';
   context.fillRect(x, y, 280, 74);
@@ -1254,6 +1535,9 @@ function drawBattleCreatureCard(
   context.fillText(label, x + 16, y + 26);
   context.font = '600 15px Georgia';
   context.fillText(`${iv}% IV`, alignRight ? x + 210 : x + 16, y + 48);
+  if (victories !== null) {
+    context.fillText(`Ascension ${Math.min(victories, EVOLUTION_VICTORIES_REQUIRED)}/${EVOLUTION_VICTORIES_REQUIRED}`, x + 96, y + 48);
+  }
   drawVigorBar(context, x + 16, y + 54, 248, vigor, maxVigor);
 }
 
@@ -1685,15 +1969,17 @@ function resolveBattleAction(current: GameState, action: BattleAction, timestamp
   const nextWildVigor = Math.max(0, battle.wildVigor - allyPower);
   if (nextWildVigor <= 0) {
     const replacement = createEncounter(battle.wild.slotId, battle.wild.roamBounds);
+    const ascension = grantVictoryToLeader(current.capturedCreatures, battle.ally.id);
     return {
       ...current,
       creaturesByMap: {
         ...current.creaturesByMap,
         south: current.creaturesByMap.south.map((entry) => (entry.id === battle.wild.id ? replacement : entry)),
       },
+      capturedCreatures: ascension.creatures,
       battle: { phase: 'idle' },
       notice: {
-        text: `${battle.ally.speciesName} remporte le duel. ${wildSpecies.name} s eparpille dans les fourres.`,
+        text: `${battle.ally.speciesName} remporte le duel. ${wildSpecies.name} s eparpille dans les fourres.${ascension.notice ? ` ${ascension.notice}` : ''}`,
         tone: 'success',
         expiresAt: timestamp + 2200,
       },
@@ -1745,12 +2031,15 @@ function applyWildCounter(current: GameState, introLog: string, damage: number, 
 
 function captureCreature(current: GameState, creature: CreatureInstance, timestamp: number, prefix?: string): GameState {
   const species = CREATURE_SPECIES[creature.speciesId];
+  const ascension =
+    current.battle.phase === 'idle' ? { creatures: current.capturedCreatures, notice: '' } : grantVictoryToLeader(current.capturedCreatures, current.battle.ally.id);
   const captured: CapturedCreature = {
     id: Date.now() + Math.floor(Math.random() * 1000),
     speciesId: creature.speciesId,
     speciesName: species.name,
     shiny: creature.shiny,
     iv: creature.iv,
+    victories: 0,
   };
   const replacement = createEncounter(creature.slotId, creature.roamBounds);
 
@@ -1760,10 +2049,10 @@ function captureCreature(current: GameState, creature: CreatureInstance, timesta
       ...current.creaturesByMap,
       south: current.creaturesByMap.south.map((entry) => (entry.id === creature.id ? replacement : entry)),
     },
-    capturedCreatures: [captured, ...current.capturedCreatures].slice(0, 30),
+    capturedCreatures: [captured, ...ascension.creatures].slice(0, 30),
     battle: { phase: 'idle' },
     notice: {
-      text: `${prefix ? `${prefix} ` : ''}${creature.shiny ? 'Shiny ' : ''}${species.name} capture${creature.shiny ? 'e' : ''}: ${species.types.join('/')} ${creature.iv}% IV, rarete ${species.rarity.toLowerCase()}.`,
+      text: `${prefix ? `${prefix} ` : ''}${creature.shiny ? 'Shiny ' : ''}${species.name} capture${creature.shiny ? 'e' : ''}: ${species.types.join('/')} ${creature.iv}% IV, rarete ${species.rarity.toLowerCase()}.${ascension.notice ? ` ${ascension.notice}` : ''}`,
       tone: 'success',
       expiresAt: timestamp + 2600,
     },
@@ -2013,6 +2302,197 @@ function shiftSheetHue(source: HTMLCanvasElement, hueDelta: number, satBoost: nu
   return canvas;
 }
 
+function remixCreatureSheet(source: HTMLCanvasElement, frames: FrameMap, variant: CreatureVisualVariant) {
+  if (variant === 'none') return source;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = source.width;
+  canvas.height = source.height;
+  const context = canvas.getContext('2d');
+  if (!context) return source;
+
+  context.drawImage(source, 0, 0);
+  for (const direction of ['down', 'left', 'right', 'up'] as const) {
+    for (const frame of frames[direction]) {
+      drawVariantAccent(context, frame, direction, variant);
+    }
+  }
+
+  return canvas;
+}
+
+function drawVariantAccent(
+  context: CanvasRenderingContext2D,
+  frame: Rect,
+  direction: Direction,
+  variant: CreatureVisualVariant,
+) {
+  const centerX = frame.x + frame.width / 2;
+  const centerY = frame.y + frame.height / 2;
+  const leftX = frame.x + 8;
+  const rightX = frame.x + frame.width - 8;
+  const topY = frame.y + 10;
+  const midY = centerY + 2;
+  const bottomY = frame.y + frame.height - 10;
+  const lookLeft = direction === 'left';
+  const lookRight = direction === 'right';
+  const wingShift = lookLeft ? -6 : lookRight ? 6 : 0;
+
+  context.save();
+  switch (variant) {
+    case 'ramureine':
+      fillLeaf(context, centerX - 10, topY + 6, 8, 14, '#6fae57', -0.6);
+      fillLeaf(context, centerX + 10, topY + 6, 8, 14, '#7ebc5f', 0.6);
+      fillLeaf(context, centerX, topY - 2, 7, 12, '#cde789', 0);
+      break;
+    case 'floramuse':
+      fillPetal(context, centerX, topY + 4, 14, '#f7c1d8');
+      fillLeaf(context, centerX - 14, midY + 8, 9, 16, '#70b56a', -0.8);
+      fillLeaf(context, centerX + 14, midY + 8, 9, 16, '#70b56a', 0.8);
+      break;
+    case 'pyrogriffe':
+      fillSpike(context, centerX - 12, topY + 8, centerX - 3, topY - 6, centerX + 2, topY + 10, '#ff9651');
+      fillSpike(context, centerX + 12, topY + 8, centerX + 3, topY - 6, centerX - 2, topY + 10, '#ffc164');
+      fillSpike(context, rightX - 6, bottomY - 10, rightX + 4, bottomY - 2, rightX - 2, bottomY - 16, '#ff6d3b');
+      break;
+    case 'volcarnage':
+      fillSpike(context, centerX - 14, topY + 6, centerX - 6, topY - 10, centerX + 2, topY + 6, '#ff784f');
+      fillSpike(context, centerX, topY + 2, centerX + 6, topY - 12, centerX + 12, topY + 6, '#ffcf66');
+      fillSpike(context, centerX + 16, topY + 8, centerX + 24, topY - 8, centerX + 28, topY + 10, '#d84e3d');
+      break;
+    case 'abyssobulle':
+      strokeRibbon(context, centerX, midY - 6, centerX - 16 + wingShift, bottomY - 4, '#9be7ff');
+      strokeRibbon(context, centerX + 4, midY - 8, centerX + 16 + wingShift, bottomY - 6, '#7ad5ff');
+      fillBubble(context, centerX + 15, topY + 4, 5, '#d7f6ff');
+      break;
+    case 'coralythe':
+      fillCoralBranch(context, centerX - 12, topY + 8, '#ff9278');
+      fillCoralBranch(context, centerX + 10, topY + 6, '#ffb08d');
+      fillLeaf(context, centerX, bottomY - 8, 8, 14, '#6dcf8b', 0);
+      break;
+    case 'bastionyx':
+      fillPlate(context, centerX - 18, midY - 8, 36, 14, '#8d9499');
+      fillPlate(context, centerX - 14, topY + 2, 28, 10, '#aab2b8');
+      break;
+    case 'monolithe':
+      fillPlate(context, centerX - 16, topY - 4, 32, 16, '#b7c0c6');
+      fillPlate(context, centerX - 20, midY + 4, 40, 14, '#7f8a90');
+      fillRune(context, centerX, midY + 10, '#dff7ff');
+      break;
+    case 'fulguroc':
+      fillSpike(context, centerX - 16, topY + 6, centerX - 4, topY - 8, centerX + 4, topY + 8, '#fce65c');
+      fillSpike(context, centerX + 4, topY + 2, centerX + 16, topY - 10, centerX + 24, topY + 10, '#fff39b');
+      strokeRibbon(context, centerX + 6, midY - 6, rightX + 3, bottomY - 10, '#ffe34e');
+      break;
+    case 'tempestor':
+      strokeRibbon(context, centerX - 6, midY - 8, leftX - 4 + wingShift, bottomY - 10, '#ecf4ff');
+      strokeRibbon(context, centerX + 8, midY - 8, rightX + 6 + wingShift, bottomY - 8, '#d6e8ff');
+      fillSpike(context, centerX, topY - 2, centerX + 7, topY - 14, centerX + 14, topY + 4, '#fff6ba');
+      break;
+    case 'none':
+      break;
+  }
+  context.restore();
+}
+
+function fillLeaf(
+  context: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  radiusX: number,
+  radiusY: number,
+  color: string,
+  rotation: number,
+) {
+  context.save();
+  context.translate(x, y);
+  context.rotate(rotation);
+  context.fillStyle = color;
+  context.beginPath();
+  context.ellipse(0, 0, radiusX, radiusY, 0, 0, Math.PI * 2);
+  context.fill();
+  context.restore();
+}
+
+function fillPetal(context: CanvasRenderingContext2D, x: number, y: number, radius: number, color: string) {
+  for (const offset of [-0.9, -0.3, 0.3, 0.9] as const) {
+    fillLeaf(context, x + offset * 7, y + Math.abs(offset) * 3, 6, radius, color, offset);
+  }
+}
+
+function fillSpike(
+  context: CanvasRenderingContext2D,
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+  x3: number,
+  y3: number,
+  color: string,
+) {
+  context.fillStyle = color;
+  context.beginPath();
+  context.moveTo(x1, y1);
+  context.lineTo(x2, y2);
+  context.lineTo(x3, y3);
+  context.closePath();
+  context.fill();
+}
+
+function strokeRibbon(
+  context: CanvasRenderingContext2D,
+  fromX: number,
+  fromY: number,
+  toX: number,
+  toY: number,
+  color: string,
+) {
+  context.strokeStyle = color;
+  context.lineWidth = 4;
+  context.lineCap = 'round';
+  context.beginPath();
+  context.moveTo(fromX, fromY);
+  context.quadraticCurveTo((fromX + toX) / 2, fromY - 8, toX, toY);
+  context.stroke();
+}
+
+function fillBubble(context: CanvasRenderingContext2D, x: number, y: number, radius: number, color: string) {
+  context.fillStyle = color;
+  context.beginPath();
+  context.arc(x, y, radius, 0, Math.PI * 2);
+  context.fill();
+}
+
+function fillCoralBranch(context: CanvasRenderingContext2D, x: number, y: number, color: string) {
+  context.strokeStyle = color;
+  context.lineWidth = 5;
+  context.lineCap = 'round';
+  context.beginPath();
+  context.moveTo(x, y + 10);
+  context.lineTo(x, y - 6);
+  context.moveTo(x, y);
+  context.lineTo(x - 8, y - 10);
+  context.moveTo(x, y - 2);
+  context.lineTo(x + 9, y - 12);
+  context.stroke();
+}
+
+function fillPlate(context: CanvasRenderingContext2D, x: number, y: number, width: number, height: number, color: string) {
+  context.fillStyle = color;
+  context.fillRect(x, y, width, height);
+}
+
+function fillRune(context: CanvasRenderingContext2D, x: number, y: number, color: string) {
+  context.strokeStyle = color;
+  context.lineWidth = 2;
+  context.beginPath();
+  context.moveTo(x, y - 6);
+  context.lineTo(x, y + 6);
+  context.moveTo(x - 5, y);
+  context.lineTo(x + 5, y);
+  context.stroke();
+}
+
 function loadImage(src: string) {
   return new Promise<HTMLImageElement>((resolve, reject) => {
     const image = new Image();
@@ -2106,7 +2586,7 @@ function getActionHint(game: GameState) {
   const creature = findNearbyCreature(game);
   if (creature) {
     const species = CREATURE_SPECIES[creature.speciesId];
-    return `E pour capturer ${creature.shiny ? 'Shiny ' : ''}${species.name} (${species.rarity.toLowerCase()})`;
+    return `E pour engager ${creature.shiny ? 'Shiny ' : ''}${species.name} (${species.rarity.toLowerCase()})`;
   }
 
   const fishingSpot = findFishingSpot(map, game.player);
@@ -2131,12 +2611,54 @@ function createStarterCreature(): CapturedCreature {
     speciesName: 'Brindibouh',
     shiny: false,
     iv: 62,
+    victories: 0,
+  };
+}
+
+function grantVictoryToLeader(creatures: CapturedCreature[], leaderId: number) {
+  let notice = '';
+  const nextCreatures = creatures.map((creature) => {
+    if (creature.id !== leaderId) {
+      return creature;
+    }
+
+    const species = CREATURE_SPECIES[creature.speciesId];
+    if (!species.evolvesTo) {
+      return {
+        ...creature,
+        victories: Math.min(creature.victories + 1, EVOLUTION_VICTORIES_REQUIRED),
+      };
+    }
+
+    const nextVictories = creature.victories + 1;
+    if (nextVictories < EVOLUTION_VICTORIES_REQUIRED) {
+      return {
+        ...creature,
+        victories: nextVictories,
+      };
+    }
+
+    const evolvedSpecies = CREATURE_SPECIES[species.evolvesTo];
+    notice = `${species.name} entre en ascension et devient ${evolvedSpecies.name}.`;
+    return {
+      ...creature,
+      speciesId: evolvedSpecies.id,
+      speciesName: evolvedSpecies.name,
+      victories: 0,
+    };
+  });
+
+  return {
+    creatures: nextCreatures,
+    notice,
   };
 }
 
 function computeVigor(target: CapturedCreature | CreatureInstance) {
+  const species = CREATURE_SPECIES[target.speciesId];
   const base = 46;
-  return base + Math.round(target.iv * 0.42);
+  const stageBonus = species.evolutionStage === 2 ? 12 : 0;
+  return base + Math.round(target.iv * 0.42) + stageBonus;
 }
 
 function computePower(target: CapturedCreature | CreatureInstance) {
@@ -2151,7 +2673,8 @@ function computePower(target: CapturedCreature | CreatureInstance) {
           : species.rarity === 'Peu commune'
             ? 2
             : 0;
-  return 8 + Math.round(target.iv * 0.12) + rarityBonus;
+  const stageBonus = species.evolutionStage === 2 ? 4 : 0;
+  return 8 + Math.round(target.iv * 0.12) + rarityBonus + stageBonus;
 }
 
 function computeSealChance(wildVigor: number, wildMaxVigor: number, creature: CreatureInstance) {
@@ -2205,7 +2728,10 @@ function getFishInventoryValue(inventory: CaughtFish[]) {
 
 function renderCapturedLabel(creature: CapturedCreature) {
   const species = CREATURE_SPECIES[creature.speciesId];
-  return `${creature.shiny ? 'Shiny ' : ''}${creature.speciesName} ${species.types.join('/')} ${creature.iv}% IV`;
+  const ascension = species.evolvesTo
+    ? ` | Ascension ${Math.min(creature.victories, EVOLUTION_VICTORIES_REQUIRED)}/${EVOLUTION_VICTORIES_REQUIRED}`
+    : '';
+  return `${creature.shiny ? 'Shiny ' : ''}${creature.speciesName} ${species.types.join('/')} ${creature.iv}% IV${ascension}`;
 }
 
 function countFishBySpecies(inventory: CaughtFish[]) {
