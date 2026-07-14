@@ -83,7 +83,7 @@ h1 {
 
 .hud-card {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 14px;
   padding: 18px;
 }
@@ -111,6 +111,12 @@ h1 {
 
 .hud-note {
   margin-top: 12px;
+}
+
+.hud-stat {
+  margin: 14px 0 0;
+  font-weight: 700;
+  color: #324926;
 }
 
 .hud-note.success {

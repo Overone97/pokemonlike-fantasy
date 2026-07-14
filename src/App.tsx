@@ -2,29 +2,75 @@ import { useEffect, useRef, useState } from 'react';
 
 const OUTSIDE_MAP_SRC = '/pokemonlike-fantasy/assets/generated/restart/map.png';
 const INSIDE_MAP_SRC = '/pokemonlike-fantasy/assets/generated/restart/house-interior.png';
-const IDLE_SRC = '/pokemonlike-fantasy/assets/generated/restart/player-idle.png';
-const WALK_SRC = '/pokemonlike-fantasy/assets/generated/restart/player-walk.png';
+const SOUTH_MAP_SRC = '/pokemonlike-fantasy/assets/generated/restart/route-south.png';
+const PLAYER_IDLE_SRC = '/pokemonlike-fantasy/assets/generated/restart/player-idle.png';
+const PLAYER_WALK_SRC = '/pokemonlike-fantasy/assets/generated/restart/player-walk.png';
+const BRINDIBOUH_SRC = '/pokemonlike-fantasy/assets/generated/restart/monster-brindibouh.png';
+const GALETOUT_SRC = '/pokemonlike-fantasy/assets/generated/restart/monster-galetout.png';
+const BULLEFROTH_SRC = '/pokemonlike-fantasy/assets/generated/restart/monster-bullefroth.png';
 
 const CANVAS_WIDTH = 960;
 const CANVAS_HEIGHT = 640;
 const STEP_MS = 220;
-const PLAYER_TARGET_HEIGHT = 104;
-const PLAYER_TARGET_WIDTH = 78;
+const CREATURE_STEP_MS = 260;
+const PLAYER_TARGET_HEIGHT = 78;
+const PLAYER_TARGET_WIDTH = 58;
+const CREATURE_TARGET_HEIGHT = 54;
+const CREATURE_TARGET_WIDTH = 64;
 const PLAYER_BODY_WIDTH = 24;
 const PLAYER_BODY_HEIGHT = 26;
-const FISH_ACTION_KEY = 'e';
+const CREATURE_BODY_WIDTH = 24;
+const CREATURE_BODY_HEIGHT = 22;
+const INTERACT_KEY = 'e';
+const SHINY_RATE = 0.01;
+const EVOLUTION_VICTORIES_REQUIRED = 3;
 
 type Direction = 'up' | 'down' | 'left' | 'right';
-type MapId = 'outside' | 'inside';
+type MapId = 'outside' | 'inside' | 'south';
+type CreatureTemplateId = 'brindibouh' | 'galetout' | 'bullefroth';
+type CreatureSpeciesId =
+  | 'brindibouh'
+  | 'ramureine'
+  | 'mousseron'
+  | 'floramuse'
+  | 'emberet'
+  | 'pyrogriffe'
+  | 'cendrours'
+  | 'volcarnage'
+  | 'bullefroth'
+  | 'abyssobulle'
+  | 'algobulle'
+  | 'coralythe'
+  | 'galetout'
+  | 'bastionyx'
+  | 'silexou'
+  | 'monolithe'
+  | 'voltlynx'
+  | 'fulguroc'
+  | 'orageon'
+  | 'tempestor'
+  | 'florazel'
+  | 'noctplume'
+  | 'spectrik'
+  | 'cristalune'
+  | 'bourbizon'
+  | 'pyroloutre'
+  | 'ferabec'
+  | 'psykoto'
+  | 'dracombre'
+  | 'solenid';
+type EncounterRarity = 'Commune' | 'Peu commune' | 'Rare' | 'Epique' | 'Legendaire';
 type MoveIntent = { dx: number; dy: number; facing: Direction };
 type Rect = { x: number; y: number; width: number; height: number };
 type FrameMap = Record<Direction, Rect[]>;
+type TriggerKind = 'door' | 'route';
 type MapTrigger = Rect & {
   targetMap: MapId;
   targetX: number;
   targetY: number;
   targetFacing: Direction;
   label: string;
+  kind: TriggerKind;
 };
 type FishingSpot = {
   id: string;
@@ -34,6 +80,12 @@ type FishingSpot = {
   facing: Direction;
   bobberOffsetX: number;
   bobberOffsetY: number;
+  label: string;
+};
+type Merchant = {
+  x: number;
+  y: number;
+  radius: number;
   label: string;
 };
 type MapDefinition = {
@@ -46,13 +98,7 @@ type MapDefinition = {
   colliders: Rect[];
   triggers: MapTrigger[];
   fishingSpots: FishingSpot[];
-};
-type LoadedAssets = {
-  maps: Record<MapId, HTMLImageElement>;
-  idleSheet: HTMLCanvasElement;
-  walkSheet: HTMLCanvasElement;
-  idleFrames: FrameMap;
-  walkFrames: FrameMap;
+  merchant?: Merchant;
 };
 type PlayerState = {
   x: number;
@@ -71,7 +117,6 @@ type FishSpecies = {
   maxSize: number;
   weight: number;
   rarity: string;
-  color: string;
   valuePerKg: number;
 };
 type CaughtFish = {
@@ -93,16 +138,103 @@ type FishingState =
       bobberY: number;
       result: CaughtFish | null;
     };
+type CreatureSpecies = {
+  id: CreatureSpeciesId;
+  name: string;
+  templateId: CreatureTemplateId;
+  types: string[];
+  rarity: EncounterRarity;
+  encounterWeight: number;
+  hueShift: number;
+  saturationBoost: number;
+  lightnessBoost: number;
+  shinyHueShift: number;
+  evolutionStage: 1 | 2;
+  evolvesTo?: CreatureSpeciesId;
+  evolvesFrom?: CreatureSpeciesId;
+  visualVariant?: CreatureVisualVariant;
+  sizeScale?: number;
+};
+type CreatureVisualVariant =
+  | 'none'
+  | 'ramureine'
+  | 'floramuse'
+  | 'pyrogriffe'
+  | 'volcarnage'
+  | 'abyssobulle'
+  | 'coralythe'
+  | 'bastionyx'
+  | 'monolithe'
+  | 'fulguroc'
+  | 'tempestor';
+type CreatureAsset = {
+  normalSheet: HTMLCanvasElement;
+  shinySheet: HTMLCanvasElement;
+  frames: FrameMap;
+};
+type BattleAction = 'frappe' | 'sceau' | 'repli';
+type CapturedCreature = {
+  id: number;
+  speciesId: CreatureSpeciesId;
+  speciesName: string;
+  shiny: boolean;
+  iv: number;
+  victories: number;
+};
+type CreatureInstance = {
+  id: number;
+  slotId: number;
+  speciesId: CreatureSpeciesId;
+  x: number;
+  y: number;
+  startX: number;
+  startY: number;
+  targetX: number;
+  targetY: number;
+  moving: boolean;
+  moveStartedAt: number;
+  lastDecisionAt: number;
+  facing: Direction;
+  shiny: boolean;
+  iv: number;
+  roamBounds: Rect;
+};
 type HudNotice = {
   text: string;
   tone: 'info' | 'success';
   expiresAt: number;
 };
+type BattleState =
+  | { phase: 'idle' }
+  | {
+      phase: 'active';
+      wild: CreatureInstance;
+      ally: CapturedCreature;
+      allyVigor: number;
+      allyMaxVigor: number;
+      wildVigor: number;
+      wildMaxVigor: number;
+      log: string;
+    };
+type LoadedAssets = {
+  maps: Record<MapId, HTMLImageElement>;
+  playerIdleSheet: HTMLCanvasElement;
+  playerWalkSheet: HTMLCanvasElement;
+  merchantIdleSheet: HTMLCanvasElement;
+  playerIdleFrames: FrameMap;
+  playerWalkFrames: FrameMap;
+  creatures: Record<CreatureSpeciesId, CreatureAsset>;
+};
+type CreaturesByMap = Record<MapId, CreatureInstance[]>;
 type GameState = {
   mapId: MapId;
   player: PlayerState;
   fishing: FishingState;
-  inventory: CaughtFish[];
+  fishInventory: CaughtFish[];
+  capturedCreatures: CapturedCreature[];
+  creaturesByMap: CreaturesByMap;
+  gold: number;
+  battle: BattleState;
   notice: HudNotice | null;
 };
 
@@ -120,11 +252,501 @@ const INPUTS: Record<string, MoveIntent> = {
 };
 
 const FISH_SPECIES: FishSpecies[] = [
-  { name: 'Truite claire', minSize: 18, maxSize: 42, weight: 46, rarity: 'Commune', color: '#7ab7ff', valuePerKg: 8 },
-  { name: 'Carpe mousseuse', minSize: 28, maxSize: 68, weight: 28, rarity: 'Commune', color: '#88b16a', valuePerKg: 7 },
-  { name: 'Perche lune', minSize: 20, maxSize: 45, weight: 16, rarity: 'Rare', color: '#d2b7ff', valuePerKg: 16 },
-  { name: 'Silure des roseaux', minSize: 55, maxSize: 120, weight: 8, rarity: 'Epique', color: '#c69a72', valuePerKg: 20 },
-  { name: 'Koi astrale', minSize: 24, maxSize: 52, weight: 2, rarity: 'Tres rare', color: '#ffe48c', valuePerKg: 55 },
+  { name: 'Truite claire', minSize: 18, maxSize: 42, weight: 46, rarity: 'Commune', valuePerKg: 8 },
+  { name: 'Carpe mousseuse', minSize: 28, maxSize: 68, weight: 28, rarity: 'Commune', valuePerKg: 7 },
+  { name: 'Perche lune', minSize: 20, maxSize: 45, weight: 16, rarity: 'Rare', valuePerKg: 16 },
+  { name: 'Silure des roseaux', minSize: 55, maxSize: 120, weight: 8, rarity: 'Epique', valuePerKg: 20 },
+  { name: 'Koi astrale', minSize: 24, maxSize: 52, weight: 2, rarity: 'Tres rare', valuePerKg: 55 },
+];
+
+const CREATURE_SPECIES: Record<CreatureSpeciesId, CreatureSpecies> = {
+  brindibouh: {
+    id: 'brindibouh',
+    name: 'Brindibouh',
+    templateId: 'brindibouh',
+    types: ['Plante'],
+    rarity: 'Commune',
+    encounterWeight: 20,
+    hueShift: 0,
+    saturationBoost: 0,
+    lightnessBoost: 0,
+    shinyHueShift: 0.35,
+    evolutionStage: 1,
+    evolvesTo: 'ramureine',
+    visualVariant: 'none',
+    sizeScale: 1,
+  },
+  ramureine: {
+    id: 'ramureine',
+    name: 'Ramureine',
+    templateId: 'brindibouh',
+    types: ['Plante', 'Fee'],
+    rarity: 'Rare',
+    encounterWeight: 6,
+    hueShift: 0.04,
+    saturationBoost: 0.1,
+    lightnessBoost: 0.08,
+    shinyHueShift: 0.49,
+    evolutionStage: 2,
+    evolvesFrom: 'brindibouh',
+    visualVariant: 'ramureine',
+    sizeScale: 1.16,
+  },
+  mousseron: {
+    id: 'mousseron',
+    name: 'Mousseron',
+    templateId: 'brindibouh',
+    types: ['Plante', 'Fee'],
+    rarity: 'Commune',
+    encounterWeight: 18,
+    hueShift: 0.08,
+    saturationBoost: 0.04,
+    lightnessBoost: 0.03,
+    shinyHueShift: 0.52,
+    evolutionStage: 1,
+    evolvesTo: 'floramuse',
+    visualVariant: 'none',
+    sizeScale: 1,
+  },
+  floramuse: {
+    id: 'floramuse',
+    name: 'Floramuse',
+    templateId: 'brindibouh',
+    types: ['Plante', 'Fee'],
+    rarity: 'Rare',
+    encounterWeight: 5,
+    hueShift: 0.15,
+    saturationBoost: 0.08,
+    lightnessBoost: 0.11,
+    shinyHueShift: 0.68,
+    evolutionStage: 2,
+    evolvesFrom: 'mousseron',
+    visualVariant: 'floramuse',
+    sizeScale: 1.15,
+  },
+  emberet: {
+    id: 'emberet',
+    name: 'Emberet',
+    templateId: 'brindibouh',
+    types: ['Feu'],
+    rarity: 'Commune',
+    encounterWeight: 17,
+    hueShift: -0.18,
+    saturationBoost: 0.22,
+    lightnessBoost: 0.02,
+    shinyHueShift: 0.38,
+    evolutionStage: 1,
+    evolvesTo: 'pyrogriffe',
+    visualVariant: 'none',
+    sizeScale: 1,
+  },
+  pyrogriffe: {
+    id: 'pyrogriffe',
+    name: 'Pyrogriffe',
+    templateId: 'brindibouh',
+    types: ['Feu', 'Tenebres'],
+    rarity: 'Rare',
+    encounterWeight: 5,
+    hueShift: -0.12,
+    saturationBoost: 0.32,
+    lightnessBoost: 0.06,
+    shinyHueShift: 0.28,
+    evolutionStage: 2,
+    evolvesFrom: 'emberet',
+    visualVariant: 'pyrogriffe',
+    sizeScale: 1.15,
+  },
+  cendrours: {
+    id: 'cendrours',
+    name: 'Cendrours',
+    templateId: 'galetout',
+    types: ['Feu', 'Sol'],
+    rarity: 'Peu commune',
+    encounterWeight: 12,
+    hueShift: -0.15,
+    saturationBoost: 0.18,
+    lightnessBoost: -0.03,
+    shinyHueShift: 0.34,
+    evolutionStage: 1,
+    evolvesTo: 'volcarnage',
+    visualVariant: 'none',
+    sizeScale: 1,
+  },
+  volcarnage: {
+    id: 'volcarnage',
+    name: 'Volcarnage',
+    templateId: 'galetout',
+    types: ['Feu', 'Sol'],
+    rarity: 'Epique',
+    encounterWeight: 3,
+    hueShift: -0.11,
+    saturationBoost: 0.28,
+    lightnessBoost: -0.08,
+    shinyHueShift: 0.08,
+    evolutionStage: 2,
+    evolvesFrom: 'cendrours',
+    visualVariant: 'volcarnage',
+    sizeScale: 1.18,
+  },
+  bullefroth: {
+    id: 'bullefroth',
+    name: 'Bullefroth',
+    templateId: 'bullefroth',
+    types: ['Eau'],
+    rarity: 'Commune',
+    encounterWeight: 19,
+    hueShift: 0,
+    saturationBoost: 0,
+    lightnessBoost: 0,
+    shinyHueShift: 0.48,
+    evolutionStage: 1,
+    evolvesTo: 'abyssobulle',
+    visualVariant: 'none',
+    sizeScale: 1,
+  },
+  abyssobulle: {
+    id: 'abyssobulle',
+    name: 'Abyssobulle',
+    templateId: 'bullefroth',
+    types: ['Eau', 'Spectre'],
+    rarity: 'Rare',
+    encounterWeight: 6,
+    hueShift: 0.58,
+    saturationBoost: 0.1,
+    lightnessBoost: -0.14,
+    shinyHueShift: 0.83,
+    evolutionStage: 2,
+    evolvesFrom: 'bullefroth',
+    visualVariant: 'abyssobulle',
+    sizeScale: 1.16,
+  },
+  algobulle: {
+    id: 'algobulle',
+    name: 'Algobulle',
+    templateId: 'bullefroth',
+    types: ['Eau', 'Plante'],
+    rarity: 'Peu commune',
+    encounterWeight: 13,
+    hueShift: 0.18,
+    saturationBoost: 0.08,
+    lightnessBoost: -0.01,
+    shinyHueShift: 0.44,
+    evolutionStage: 1,
+    evolvesTo: 'coralythe',
+    visualVariant: 'none',
+    sizeScale: 1,
+  },
+  coralythe: {
+    id: 'coralythe',
+    name: 'Coralythe',
+    templateId: 'bullefroth',
+    types: ['Eau', 'Plante'],
+    rarity: 'Rare',
+    encounterWeight: 5,
+    hueShift: 0.24,
+    saturationBoost: 0.15,
+    lightnessBoost: 0.02,
+    shinyHueShift: 0.63,
+    evolutionStage: 2,
+    evolvesFrom: 'algobulle',
+    visualVariant: 'coralythe',
+    sizeScale: 1.14,
+  },
+  galetout: {
+    id: 'galetout',
+    name: 'Galetout',
+    templateId: 'galetout',
+    types: ['Roche'],
+    rarity: 'Commune',
+    encounterWeight: 16,
+    hueShift: 0,
+    saturationBoost: 0,
+    lightnessBoost: 0,
+    shinyHueShift: 0.58,
+    evolutionStage: 1,
+    evolvesTo: 'bastionyx',
+    visualVariant: 'none',
+    sizeScale: 1,
+  },
+  bastionyx: {
+    id: 'bastionyx',
+    name: 'Bastionyx',
+    templateId: 'galetout',
+    types: ['Roche', 'Acier'],
+    rarity: 'Rare',
+    encounterWeight: 5,
+    hueShift: 0.03,
+    saturationBoost: -0.04,
+    lightnessBoost: -0.02,
+    shinyHueShift: 0.69,
+    evolutionStage: 2,
+    evolvesFrom: 'galetout',
+    visualVariant: 'bastionyx',
+    sizeScale: 1.17,
+  },
+  silexou: {
+    id: 'silexou',
+    name: 'Silexou',
+    templateId: 'galetout',
+    types: ['Roche', 'Acier'],
+    rarity: 'Peu commune',
+    encounterWeight: 12,
+    hueShift: 0.06,
+    saturationBoost: -0.06,
+    lightnessBoost: 0.04,
+    shinyHueShift: 0.61,
+    evolutionStage: 1,
+    evolvesTo: 'monolithe',
+    visualVariant: 'none',
+    sizeScale: 1,
+  },
+  monolithe: {
+    id: 'monolithe',
+    name: 'Monolithe',
+    templateId: 'galetout',
+    types: ['Roche', 'Acier'],
+    rarity: 'Epique',
+    encounterWeight: 3,
+    hueShift: 0.08,
+    saturationBoost: -0.1,
+    lightnessBoost: 0.08,
+    shinyHueShift: 0.81,
+    evolutionStage: 2,
+    evolvesFrom: 'silexou',
+    visualVariant: 'monolithe',
+    sizeScale: 1.18,
+  },
+  voltlynx: {
+    id: 'voltlynx',
+    name: 'Voltlynx',
+    templateId: 'brindibouh',
+    types: ['Electrik'],
+    rarity: 'Peu commune',
+    encounterWeight: 12,
+    hueShift: -0.27,
+    saturationBoost: 0.28,
+    lightnessBoost: 0.1,
+    shinyHueShift: 0.56,
+    evolutionStage: 1,
+    evolvesTo: 'fulguroc',
+    visualVariant: 'none',
+    sizeScale: 1,
+  },
+  fulguroc: {
+    id: 'fulguroc',
+    name: 'Fulguroc',
+    templateId: 'brindibouh',
+    types: ['Electrik', 'Acier'],
+    rarity: 'Rare',
+    encounterWeight: 5,
+    hueShift: -0.24,
+    saturationBoost: 0.36,
+    lightnessBoost: 0.14,
+    shinyHueShift: 0.73,
+    evolutionStage: 2,
+    evolvesFrom: 'voltlynx',
+    visualVariant: 'fulguroc',
+    sizeScale: 1.15,
+  },
+  orageon: {
+    id: 'orageon',
+    name: 'Orageon',
+    templateId: 'bullefroth',
+    types: ['Electrik', 'Vol'],
+    rarity: 'Rare',
+    encounterWeight: 8,
+    hueShift: -0.22,
+    saturationBoost: 0.22,
+    lightnessBoost: 0.08,
+    shinyHueShift: 0.63,
+    evolutionStage: 1,
+    evolvesTo: 'tempestor',
+    visualVariant: 'none',
+    sizeScale: 1,
+  },
+  tempestor: {
+    id: 'tempestor',
+    name: 'Tempestor',
+    templateId: 'bullefroth',
+    types: ['Electrik', 'Vol'],
+    rarity: 'Epique',
+    encounterWeight: 3,
+    hueShift: -0.28,
+    saturationBoost: 0.28,
+    lightnessBoost: 0.14,
+    shinyHueShift: 0.91,
+    evolutionStage: 2,
+    evolvesFrom: 'orageon',
+    visualVariant: 'tempestor',
+    sizeScale: 1.18,
+  },
+  florazel: {
+    id: 'florazel',
+    name: 'Florazel',
+    templateId: 'brindibouh',
+    types: ['Fee', 'Plante'],
+    rarity: 'Peu commune',
+    encounterWeight: 11,
+    hueShift: 0.32,
+    saturationBoost: 0.18,
+    lightnessBoost: 0.12,
+    shinyHueShift: 0.67,
+    evolutionStage: 1,
+    visualVariant: 'none',
+    sizeScale: 1,
+  },
+  noctplume: {
+    id: 'noctplume',
+    name: 'Noctplume',
+    templateId: 'bullefroth',
+    types: ['Tenebres', 'Vol'],
+    rarity: 'Rare',
+    encounterWeight: 7,
+    hueShift: 0.74,
+    saturationBoost: -0.08,
+    lightnessBoost: -0.18,
+    shinyHueShift: 0.16,
+    evolutionStage: 1,
+    visualVariant: 'none',
+    sizeScale: 1,
+  },
+  spectrik: {
+    id: 'spectrik',
+    name: 'Spectrik',
+    templateId: 'bullefroth',
+    types: ['Spectre', 'Electrik'],
+    rarity: 'Rare',
+    encounterWeight: 7,
+    hueShift: 0.57,
+    saturationBoost: 0.12,
+    lightnessBoost: -0.04,
+    shinyHueShift: 0.1,
+    evolutionStage: 1,
+    visualVariant: 'none',
+    sizeScale: 1,
+  },
+  cristalune: {
+    id: 'cristalune',
+    name: 'Cristalune',
+    templateId: 'bullefroth',
+    types: ['Glace', 'Fee'],
+    rarity: 'Rare',
+    encounterWeight: 6,
+    hueShift: 0.46,
+    saturationBoost: 0.02,
+    lightnessBoost: 0.2,
+    shinyHueShift: 0.76,
+    evolutionStage: 1,
+    visualVariant: 'none',
+    sizeScale: 1,
+  },
+  bourbizon: {
+    id: 'bourbizon',
+    name: 'Bourbizon',
+    templateId: 'galetout',
+    types: ['Poison', 'Sol'],
+    rarity: 'Peu commune',
+    encounterWeight: 10,
+    hueShift: 0.82,
+    saturationBoost: 0.08,
+    lightnessBoost: -0.08,
+    shinyHueShift: 0.4,
+    evolutionStage: 1,
+    visualVariant: 'none',
+    sizeScale: 1,
+  },
+  pyroloutre: {
+    id: 'pyroloutre',
+    name: 'Pyroloutre',
+    templateId: 'bullefroth',
+    types: ['Feu', 'Eau'],
+    rarity: 'Epique',
+    encounterWeight: 4,
+    hueShift: -0.16,
+    saturationBoost: 0.24,
+    lightnessBoost: 0.02,
+    shinyHueShift: 0.3,
+    evolutionStage: 1,
+    visualVariant: 'none',
+    sizeScale: 1,
+  },
+  ferabec: {
+    id: 'ferabec',
+    name: 'Ferabec',
+    templateId: 'galetout',
+    types: ['Acier', 'Vol'],
+    rarity: 'Rare',
+    encounterWeight: 6,
+    hueShift: 0.1,
+    saturationBoost: -0.12,
+    lightnessBoost: 0.1,
+    shinyHueShift: 0.72,
+    evolutionStage: 1,
+    visualVariant: 'none',
+    sizeScale: 1,
+  },
+  psykoto: {
+    id: 'psykoto',
+    name: 'Psykoto',
+    templateId: 'brindibouh',
+    types: ['Psy'],
+    rarity: 'Epique',
+    encounterWeight: 4,
+    hueShift: 0.39,
+    saturationBoost: 0.2,
+    lightnessBoost: 0.08,
+    shinyHueShift: 0.88,
+    evolutionStage: 1,
+    visualVariant: 'none',
+    sizeScale: 1,
+  },
+  dracombre: {
+    id: 'dracombre',
+    name: 'Dracombre',
+    templateId: 'galetout',
+    types: ['Dragon', 'Tenebres'],
+    rarity: 'Epique',
+    encounterWeight: 3,
+    hueShift: 0.67,
+    saturationBoost: 0.06,
+    lightnessBoost: -0.12,
+    shinyHueShift: 0.21,
+    evolutionStage: 1,
+    visualVariant: 'none',
+    sizeScale: 1,
+  },
+  solenid: {
+    id: 'solenid',
+    name: 'Solenid',
+    templateId: 'brindibouh',
+    types: ['Insecte', 'Lumiere'],
+    rarity: 'Legendaire',
+    encounterWeight: 1,
+    hueShift: -0.31,
+    saturationBoost: 0.26,
+    lightnessBoost: 0.16,
+    shinyHueShift: 0.12,
+    evolutionStage: 1,
+    visualVariant: 'none',
+    sizeScale: 1,
+  },
+};
+
+const CREATURE_TEMPLATE_SOURCES: Record<CreatureTemplateId, string> = {
+  brindibouh: BRINDIBOUH_SRC,
+  galetout: GALETOUT_SRC,
+  bullefroth: BULLEFROTH_SRC,
+};
+
+const SOUTH_SPAWN_SLOTS: Rect[] = [
+  { x: 170, y: 168, width: 168, height: 116 },
+  { x: 514, y: 152, width: 170, height: 118 },
+  { x: 352, y: 280, width: 196, height: 126 },
+  { x: 684, y: 302, width: 160, height: 124 },
+  { x: 188, y: 452, width: 176, height: 118 },
+  { x: 576, y: 480, width: 178, height: 100 },
+  { x: 306, y: 184, width: 130, height: 96 },
+  { x: 638, y: 188, width: 126, height: 94 },
 ];
 
 const MAPS: Record<MapId, MapDefinition> = {
@@ -137,9 +759,10 @@ const MAPS: Record<MapId, MapDefinition> = {
     spawnFacing: 'down',
     colliders: [
       { x: 0, y: 0, width: CANVAS_WIDTH, height: 20 },
-      { x: 0, y: CANVAS_HEIGHT - 26, width: CANVAS_WIDTH, height: 26 },
       { x: 0, y: 0, width: 26, height: CANVAS_HEIGHT },
       { x: CANVAS_WIDTH - 26, y: 0, width: 26, height: CANVAS_HEIGHT },
+      { x: 0, y: CANVAS_HEIGHT - 26, width: 416, height: 26 },
+      { x: 544, y: CANVAS_HEIGHT - 26, width: CANVAS_WIDTH - 544, height: 26 },
       { x: 8, y: 92, width: 205, height: 120 },
       { x: 0, y: 212, width: 170, height: 74 },
       { x: 0, y: 288, width: 134, height: 78 },
@@ -161,6 +784,19 @@ const MAPS: Record<MapId, MapDefinition> = {
         targetY: 554,
         targetFacing: 'up',
         label: 'Entrer dans la maison',
+        kind: 'door',
+      },
+      {
+        x: 430,
+        y: 572,
+        width: 100,
+        height: 44,
+        targetMap: 'south',
+        targetX: 480,
+        targetY: 112,
+        targetFacing: 'down',
+        label: 'Prendre la route du sud',
+        kind: 'route',
       },
     ],
     fishingSpots: [
@@ -195,6 +831,12 @@ const MAPS: Record<MapId, MapDefinition> = {
         label: 'Rive sud',
       },
     ],
+    merchant: {
+      x: 642,
+      y: 302,
+      radius: 56,
+      label: 'Marchand',
+    },
   },
   inside: {
     id: 'inside',
@@ -227,13 +869,49 @@ const MAPS: Record<MapId, MapDefinition> = {
         targetY: 252,
         targetFacing: 'down',
         label: 'Sortir de la maison',
+        kind: 'door',
+      },
+    ],
+    fishingSpots: [],
+  },
+  south: {
+    id: 'south',
+    name: 'Route du sud',
+    src: SOUTH_MAP_SRC,
+    spawnX: 480,
+    spawnY: 112,
+    spawnFacing: 'down',
+    colliders: [
+      { x: 0, y: 0, width: 420, height: 26 },
+      { x: 540, y: 0, width: 420, height: 26 },
+      { x: 0, y: 0, width: 26, height: CANVAS_HEIGHT },
+      { x: CANVAS_WIDTH - 26, y: 0, width: 26, height: CANVAS_HEIGHT },
+      { x: 0, y: CANVAS_HEIGHT - 24, width: CANVAS_WIDTH, height: 24 },
+      { x: 0, y: 58, width: 316, height: 98 },
+      { x: 640, y: 58, width: 320, height: 98 },
+      { x: 0, y: 438, width: 362, height: 158 },
+      { x: 342, y: 462, width: 190, height: 82 },
+      { x: 548, y: 428, width: 412, height: 154 },
+    ],
+    triggers: [
+      {
+        x: 438,
+        y: 0,
+        width: 84,
+        height: 54,
+        targetMap: 'outside',
+        targetX: 480,
+        targetY: 540,
+        targetFacing: 'up',
+        label: 'Retour au village',
+        kind: 'route',
       },
     ],
     fishingSpots: [],
   },
 };
 
-function createInitialPlayer(mapId: MapId): PlayerState {
+function createPlayerForMap(mapId: MapId): PlayerState {
   const map = MAPS[mapId];
   return {
     x: map.spawnX,
@@ -248,12 +926,25 @@ function createInitialPlayer(mapId: MapId): PlayerState {
   };
 }
 
+function createSouthCreatures(): CreatureInstance[] {
+  return SOUTH_SPAWN_SLOTS.map((roamBounds, index) => createEncounter(index, roamBounds));
+}
+
 function createInitialGameState(): GameState {
+  const starter = createStarterCreature();
   return {
     mapId: 'outside',
-    player: createInitialPlayer('outside'),
+    player: createPlayerForMap('outside'),
     fishing: { phase: 'idle' },
-    inventory: [],
+    fishInventory: [],
+    capturedCreatures: [starter],
+    creaturesByMap: {
+      outside: [],
+      inside: [],
+      south: createSouthCreatures(),
+    },
+    gold: 0,
+    battle: { phase: 'idle' },
     notice: null,
   };
 }
@@ -289,6 +980,12 @@ function App() {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const key = event.key.toLowerCase();
+      if (key === '1' || key === '2' || key === '3') {
+        event.preventDefault();
+        setGame((current) => handleBattleInput(current, key, performance.now()));
+        return;
+      }
+
       const input = INPUTS[key];
       if (input) {
         event.preventDefault();
@@ -296,6 +993,9 @@ function App() {
         bufferedDirectionRef.current = input.facing;
 
         setGame((current) => {
+          if (current.battle.phase !== 'idle') {
+            return current;
+          }
           if (current.fishing.phase !== 'idle') {
             return {
               ...current,
@@ -318,16 +1018,15 @@ function App() {
 
           return {
             ...current,
-            player: attemptMove(current.player, input, performance.now(), MAPS[current.mapId].colliders),
+            player: attemptPlayerMove(current.player, input, performance.now(), MAPS[current.mapId].colliders),
           };
         });
-
         return;
       }
 
-      if (key === FISH_ACTION_KEY) {
+      if (key === INTERACT_KEY) {
         event.preventDefault();
-        setGame((current) => startFishing(current, performance.now()));
+        setGame((current) => handlePrimaryAction(current, performance.now()));
       }
     };
 
@@ -356,7 +1055,9 @@ function App() {
     let frameId = 0;
 
     const tick = (timestamp: number) => {
-      setGame((current) => advanceGameState(current, timestamp, bufferedDirectionRef.current, heldDirectionRef.current));
+      setGame((current) =>
+        advanceGameState(current, timestamp, bufferedDirectionRef.current, heldDirectionRef.current),
+      );
       frameId = window.requestAnimationFrame(tick);
     };
 
@@ -381,33 +1082,25 @@ function App() {
   }, [game, loadError, ready]);
 
   const map = MAPS[game.mapId];
-  const totalValue = game.inventory.reduce((sum, fish) => sum + fish.value, 0);
-  const fishCounts = countFishBySpecies(game.inventory);
-  const nearbySpot = findFishingSpot(map, game.player);
-  const activeTrigger = findTrigger(map, game.player);
-  const contextualHint =
-    game.fishing.phase !== 'idle'
-      ? 'La ligne est a l’eau... attends la touche.'
-      : nearbySpot
-        ? `Appuie sur E pres de ${nearbySpot.label.toLowerCase()} pour pecher.`
-        : activeTrigger
-          ? `${activeTrigger.label}.`
-          : map.id === 'outside'
-            ? 'Entre dans la maison ou peche autour du lac.'
-            : 'Ressors par la porte quand tu veux.';
+  const fishCounts = countFishBySpecies(game.fishInventory);
+  const fishValue = getFishInventoryValue(game.fishInventory);
+  const actionHint = getActionHint(game);
+  const shinyCount = game.capturedCreatures.filter((creature) => creature.shiny).length;
+  const activeBinder = game.capturedCreatures[0];
 
   return (
     <main className="app-shell">
       <section className="intro-card">
         <p className="eyebrow">Proto fantasy</p>
-        <h1>Maison jouable, interieur, et debut de peche</h1>
+        <h1>Marchand, route sud, affrontements et evolutions</h1>
         <p className="description">
-          Le perso garde maintenant une hauteur stable entre idle et marche, la porte de la maison
-          charge une deuxieme carte, et le lac sert de premiere boucle de peche avec inventaire.
+          Le marchand est en place, la route du sud fourmille de creatures, et 10 lignées peuvent
+          maintenant entrer en ascension avec un design evolue bien distinct.
         </p>
         <div className="tips">
           <span>Deplacement: fleches, ZQSD ou WASD</span>
-          <span>Peche: touche E sur les bords du lac</span>
+          <span>Action: E pour pecher, vendre ou engager une creature</span>
+          <span>Duel: 1 Frappe, 2 Sceau, 3 Repli</span>
           <span>Carte actuelle: {map.name}</span>
         </div>
       </section>
@@ -417,21 +1110,32 @@ function App() {
           ref={canvasRef}
           width={CANVAS_WIDTH}
           height={CANVAS_HEIGHT}
-          aria-label="Premiere map fantasy avec maison et peche"
+          aria-label="Carte fantasy avec village, marchand et creatures a capturer"
         />
       </section>
 
       <section className="hud-card">
         <div className="hud-block">
           <p className="hud-label">Etat</p>
-          <p className="hud-value">{contextualHint}</p>
+          <p className="hud-value">{actionHint}</p>
           <p className={`hud-note ${game.notice?.tone ?? 'info'}`}>
-            {game.notice?.text ?? 'Le rare du coin, c’est la Koi astrale. Elle vaut cher, donc ne la bouffe pas.'}
+            {game.notice?.text ??
+              'Le shiny tombe a 1 sur 100. Donc oui, il va forcement te narguer quand tu ne regardes pas.'}
           </p>
+          <p className="hud-stat">Or: {game.gold.toFixed(1)} pieces</p>
+          {activeBinder ? (
+            <p className="hud-stat">
+              Meneur: {activeBinder.shiny ? 'Shiny ' : ''}
+              {activeBinder.speciesName} {activeBinder.iv}% IV
+              {CREATURE_SPECIES[activeBinder.speciesId].evolvesTo
+                ? ` | Ascension ${Math.min(activeBinder.victories, EVOLUTION_VICTORIES_REQUIRED)}/${EVOLUTION_VICTORIES_REQUIRED}`
+                : ' | Forme finale'}
+            </p>
+          ) : null}
         </div>
 
         <div className="hud-block">
-          <p className="hud-label">Inventaire poisson</p>
+          <p className="hud-label">Sac du marchand</p>
           {fishCounts.length > 0 ? (
             <div className="inventory-list">
               {fishCounts.map((entry) => (
@@ -441,9 +1145,27 @@ function App() {
               ))}
             </div>
           ) : (
-            <p className="hud-value">Rien pour l’instant. Les poissons n’aiment pas les poches vides.</p>
+            <p className="hud-value">Aucun poisson a vendre pour le moment.</p>
           )}
-          <p className="hud-value">Valeur future estimee: {totalValue.toFixed(1)} pieces</p>
+          <p className="hud-stat">Valeur de revente: {fishValue.toFixed(1)} pieces</p>
+        </div>
+
+        <div className="hud-block">
+          <p className="hud-label">Equipe capturee</p>
+          {game.capturedCreatures.length > 0 ? (
+            <div className="inventory-list">
+              {game.capturedCreatures.slice(0, 6).map((creature) => (
+                <span key={creature.id}>
+                  {renderCapturedLabel(creature)}
+                </span>
+              ))}
+            </div>
+          ) : (
+            <p className="hud-value">Rien capture. Va fouiller la route du sud.</p>
+          )}
+          <p className="hud-stat">
+            Total: {game.capturedCreatures.length} creatures, dont {shinyCount} shiny
+          </p>
         </div>
       </section>
     </main>
@@ -451,35 +1173,111 @@ function App() {
 }
 
 async function buildAssets(): Promise<LoadedAssets> {
-  const [outside, inside, idle, walk] = await Promise.all([
+  const [outside, inside, south, playerIdle, playerWalk, brindibouh, galetout, bullefroth] = await Promise.all([
     loadImage(OUTSIDE_MAP_SRC),
     loadImage(INSIDE_MAP_SRC),
-    loadImage(IDLE_SRC),
-    loadImage(WALK_SRC),
+    loadImage(SOUTH_MAP_SRC),
+    loadImage(PLAYER_IDLE_SRC),
+    loadImage(PLAYER_WALK_SRC),
+    loadImage(CREATURE_TEMPLATE_SOURCES.brindibouh),
+    loadImage(CREATURE_TEMPLATE_SOURCES.galetout),
+    loadImage(CREATURE_TEMPLATE_SOURCES.bullefroth),
   ]);
-  const idleSheet = removeGreenScreen(idle);
-  const walkSheet = removeGreenScreen(walk);
+
+  const playerIdleSheet = removeGreenScreen(playerIdle);
+  const playerWalkSheet = removeGreenScreen(playerWalk);
+  const baseCreatureAssets: Record<CreatureTemplateId, CreatureAsset> = {
+    brindibouh: createTemplateAsset(brindibouh),
+    galetout: createTemplateAsset(galetout),
+    bullefroth: createTemplateAsset(bullefroth),
+  };
 
   return {
     maps: {
       outside,
       inside,
+      south,
     },
-    idleSheet,
-    walkSheet,
-    idleFrames: detectIdleFrames(idleSheet),
-    walkFrames: detectWalkFrames(walkSheet),
+    playerIdleSheet,
+    playerWalkSheet,
+    merchantIdleSheet: shiftSheetHue(playerIdleSheet, 0.08, 0.16, 0.03),
+    playerIdleFrames: detectIdleFrames(playerIdleSheet),
+    playerWalkFrames: detectWalkFrames(playerWalkSheet),
+    creatures: Object.fromEntries(
+      Object.values(CREATURE_SPECIES).map((species) => [
+        species.id,
+        createSpeciesAsset(baseCreatureAssets[species.templateId], species),
+      ]),
+    ) as Record<CreatureSpeciesId, CreatureAsset>,
+  };
+}
+
+function createTemplateAsset(source: HTMLImageElement): CreatureAsset {
+  const normalSheet = removeGreenScreen(source);
+  return {
+    normalSheet,
+    shinySheet: shiftSheetHue(normalSheet, 0.42, 0.28, 0.05),
+    frames: detectWalkFrames(normalSheet),
+  };
+}
+
+function createSpeciesAsset(baseAsset: CreatureAsset, species: CreatureSpecies): CreatureAsset {
+  const remixedSheet = remixCreatureSheet(baseAsset.normalSheet, baseAsset.frames, species.visualVariant ?? 'none');
+  const normalSheet = shiftSheetHue(
+    remixedSheet,
+    species.hueShift,
+    species.saturationBoost,
+    species.lightnessBoost,
+  );
+  return {
+    normalSheet,
+    shinySheet: shiftSheetHue(
+      normalSheet,
+      species.shinyHueShift,
+      0.22,
+      0.08,
+    ),
+    frames: baseAsset.frames,
   };
 }
 
 function renderScene(context: CanvasRenderingContext2D, assets: LoadedAssets, game: GameState) {
+  const map = MAPS[game.mapId];
   context.imageSmoothingEnabled = true;
   context.drawImage(assets.maps[game.mapId], 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-  drawMapLabel(context, MAPS[game.mapId].name);
-  drawPlayerShadow(context, game.player.x, game.player.y);
+  drawMapLabel(context, map.name);
+
+  const drawStack: Array<{ y: number; draw: () => void }> = [];
+  const merchant = map.merchant;
+  const creatures = game.creaturesByMap[game.mapId];
+
+  if (merchant) {
+    drawStack.push({
+      y: merchant.y,
+      draw: () => drawMerchant(context, assets, merchant),
+    });
+  }
+
+  for (const creature of creatures) {
+    drawStack.push({
+      y: creature.y,
+      draw: () => drawCreature(context, assets, creature),
+    });
+  }
+
+  drawStack.push({
+    y: game.player.y,
+    draw: () => drawPlayer(context, assets, game.player),
+  });
+
+  drawStack.sort((left, right) => left.y - right.y);
+  for (const entry of drawStack) {
+    entry.draw();
+  }
+
   drawFishingOverlay(context, game);
-  drawPlayer(context, assets, game.player);
   drawCanvasHint(context, game);
+  drawBattleOverlay(context, assets, game);
 }
 
 function drawMapLabel(context: CanvasRenderingContext2D, label: string) {
@@ -491,16 +1289,94 @@ function drawMapLabel(context: CanvasRenderingContext2D, label: string) {
 }
 
 function drawPlayer(context: CanvasRenderingContext2D, assets: LoadedAssets, player: PlayerState) {
-  const sourceFrames = player.moving ? assets.walkFrames[player.facing] : assets.idleFrames[player.facing];
-  const frameIndex = player.moving ? Math.floor(performance.now() / 120) % sourceFrames.length : 0;
-  const frame = sourceFrames[frameIndex];
-  const image = player.moving ? assets.walkSheet : assets.idleSheet;
-  const scale = Math.min(PLAYER_TARGET_HEIGHT / frame.height, PLAYER_TARGET_WIDTH / frame.width);
+  drawShadow(context, player.x, player.y, 12, 6, 0.16);
+  drawSpriteFrame(
+    context,
+    assets.playerIdleSheet,
+    assets.playerWalkSheet,
+    assets.playerIdleFrames,
+    assets.playerWalkFrames,
+    player,
+    PLAYER_TARGET_WIDTH,
+    PLAYER_TARGET_HEIGHT,
+  );
+}
 
+function drawMerchant(context: CanvasRenderingContext2D, assets: LoadedAssets, merchant: Merchant) {
+  drawShadow(context, merchant.x, merchant.y, 12, 6, 0.18);
+  const frame = assets.playerIdleFrames.down[0];
+  const scale = Math.min(70 / frame.height, 54 / frame.width);
   const drawWidth = Math.round(frame.width * scale);
   const drawHeight = Math.round(frame.height * scale);
-  const px = player.x - drawWidth / 2;
-  const py = player.y - drawHeight + 10;
+  context.drawImage(
+    assets.merchantIdleSheet,
+    frame.x,
+    frame.y,
+    frame.width,
+    frame.height,
+    merchant.x - drawWidth / 2,
+    merchant.y - drawHeight + 10,
+    drawWidth,
+    drawHeight,
+  );
+
+  context.fillStyle = 'rgba(33, 41, 20, 0.78)';
+  context.fillRect(merchant.x - 52, merchant.y - 92, 104, 26);
+  context.fillStyle = '#fbf6de';
+  context.font = '600 15px Georgia';
+  context.fillText(merchant.label, merchant.x - 34, merchant.y - 74);
+}
+
+function drawCreature(context: CanvasRenderingContext2D, assets: LoadedAssets, creature: CreatureInstance) {
+  const asset = assets.creatures[creature.speciesId];
+  const species = CREATURE_SPECIES[creature.speciesId];
+  const frames = asset.frames[creature.facing];
+  const frameIndex = creature.moving ? Math.floor(performance.now() / 150) % frames.length : 1;
+  const frame = frames[frameIndex];
+  const sheet = creature.shiny ? asset.shinySheet : asset.normalSheet;
+  const scale =
+    Math.min(CREATURE_TARGET_HEIGHT / frame.height, CREATURE_TARGET_WIDTH / frame.width) * (species.sizeScale ?? 1);
+  const drawWidth = Math.round(frame.width * scale);
+  const drawHeight = Math.round(frame.height * scale);
+
+  drawShadow(context, creature.x, creature.y, 11, 5, 0.14);
+  context.drawImage(
+    sheet,
+    frame.x,
+    frame.y,
+    frame.width,
+    frame.height,
+    creature.x - drawWidth / 2,
+    creature.y - drawHeight + 12,
+    drawWidth,
+    drawHeight,
+  );
+
+  if (creature.shiny) {
+    context.fillStyle = '#ffe07a';
+    context.beginPath();
+    context.arc(creature.x + 18, creature.y - 48, 4, 0, Math.PI * 2);
+    context.fill();
+  }
+}
+
+function drawSpriteFrame(
+  context: CanvasRenderingContext2D,
+  idleSheet: HTMLCanvasElement,
+  walkSheet: HTMLCanvasElement,
+  idleFrames: FrameMap,
+  walkFrames: FrameMap,
+  player: PlayerState,
+  targetWidth: number,
+  targetHeight: number,
+) {
+  const sourceFrames = player.moving ? walkFrames[player.facing] : idleFrames[player.facing];
+  const frameIndex = player.moving ? Math.floor(performance.now() / 120) % sourceFrames.length : 0;
+  const frame = sourceFrames[frameIndex];
+  const image = player.moving ? walkSheet : idleSheet;
+  const scale = Math.min(targetHeight / frame.height, targetWidth / frame.width);
+  const drawWidth = Math.round(frame.width * scale);
+  const drawHeight = Math.round(frame.height * scale);
 
   context.drawImage(
     image,
@@ -508,17 +1384,24 @@ function drawPlayer(context: CanvasRenderingContext2D, assets: LoadedAssets, pla
     frame.y,
     frame.width,
     frame.height,
-    px,
-    py,
+    player.x - drawWidth / 2,
+    player.y - drawHeight + 10,
     drawWidth,
     drawHeight,
   );
 }
 
-function drawPlayerShadow(context: CanvasRenderingContext2D, x: number, y: number) {
-  context.fillStyle = 'rgba(20, 28, 18, 0.18)';
+function drawShadow(
+  context: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  radiusX: number,
+  radiusY: number,
+  alpha: number,
+) {
+  context.fillStyle = `rgba(20, 28, 18, ${alpha})`;
   context.beginPath();
-  context.ellipse(x, y + 4, 14, 7, 0, 0, Math.PI * 2);
+  context.ellipse(x, y + 4, radiusX, radiusY, 0, 0, Math.PI * 2);
   context.fill();
 }
 
@@ -557,24 +1440,120 @@ function drawFishingOverlay(context: CanvasRenderingContext2D, game: GameState) 
 }
 
 function drawCanvasHint(context: CanvasRenderingContext2D, game: GameState) {
-  const map = MAPS[game.mapId];
-  const spot = findFishingSpot(map, game.player);
-  const trigger = findTrigger(map, game.player);
-  const hint =
-    game.fishing.phase !== 'idle'
-      ? 'Peche en cours...'
-      : spot
-        ? 'E pour pecher'
-        : trigger
-          ? trigger.label
-          : '';
+  const hint = getActionHint(game);
   if (!hint) return;
 
   context.fillStyle = 'rgba(17, 27, 11, 0.76)';
-  context.fillRect(326, 22, 308, 38);
+  context.fillRect(284, 22, 392, 38);
   context.fillStyle = '#f7f2da';
   context.font = '600 18px Georgia';
-  context.fillText(hint, 346, 47);
+  context.fillText(hint, 304, 47);
+}
+
+function drawBattleOverlay(context: CanvasRenderingContext2D, assets: LoadedAssets, game: GameState) {
+  if (game.battle.phase === 'idle') return;
+
+  const { ally, wild, allyVigor, allyMaxVigor, wildVigor, wildMaxVigor, log } = game.battle;
+  const allyAsset = assets.creatures[ally.speciesId];
+  const wildAsset = assets.creatures[wild.speciesId];
+  const allyFrame = allyAsset.frames.left[1];
+  const wildFrame = wildAsset.frames.right[1];
+  const allySheet = ally.shiny ? allyAsset.shinySheet : allyAsset.normalSheet;
+  const wildSheet = wild.shiny ? wildAsset.shinySheet : wildAsset.normalSheet;
+  const allySpecies = CREATURE_SPECIES[ally.speciesId];
+  const wildSpecies = CREATURE_SPECIES[wild.speciesId];
+
+  context.save();
+  context.fillStyle = 'rgba(10, 18, 10, 0.58)';
+  context.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+  context.fillStyle = 'rgba(244, 236, 208, 0.96)';
+  context.fillRect(72, 78, CANVAS_WIDTH - 144, CANVAS_HEIGHT - 156);
+  context.strokeStyle = 'rgba(71, 94, 46, 0.6)';
+  context.lineWidth = 3;
+  context.strokeRect(72, 78, CANVAS_WIDTH - 144, CANVAS_HEIGHT - 156);
+
+  context.fillStyle = '#27411f';
+  context.font = '700 30px Georgia';
+  context.fillText('Affrontement sauvage', 106, 126);
+
+  drawBattleCreatureCard(
+    context,
+    ally.speciesName,
+    ally.iv,
+    allyVigor,
+    allyMaxVigor,
+    114,
+    174,
+    false,
+    allySpecies.evolvesTo ? ally.victories : null,
+  );
+  drawBattleCreatureCard(
+    context,
+    `${wild.shiny ? 'Shiny ' : ''}${wildSpecies.name}`,
+    wild.iv,
+    wildVigor,
+    wildMaxVigor,
+    518,
+    174,
+    true,
+    null,
+  );
+
+  const allyBattleSize = Math.round(144 * (allySpecies.sizeScale ?? 1));
+  const wildBattleSize = Math.round(144 * (wildSpecies.sizeScale ?? 1));
+  context.drawImage(allySheet, allyFrame.x, allyFrame.y, allyFrame.width, allyFrame.height, 132, 264, allyBattleSize, allyBattleSize);
+  context.drawImage(wildSheet, wildFrame.x, wildFrame.y, wildFrame.width, wildFrame.height, 636, 214, wildBattleSize, wildBattleSize);
+
+  context.fillStyle = '#324926';
+  context.font = '600 18px Georgia';
+  context.fillText(log, 108, 430);
+  context.fillText('1 Frappe', 108, 474);
+  context.fillText('2 Sceau', 248, 474);
+  context.fillText('3 Repli', 392, 474);
+  context.fillText('Les PV s appellent Vigueur. On garde un peu de dignite.', 108, 514);
+  context.restore();
+}
+
+function drawBattleCreatureCard(
+  context: CanvasRenderingContext2D,
+  label: string,
+  iv: number,
+  vigor: number,
+  maxVigor: number,
+  x: number,
+  y: number,
+  alignRight: boolean,
+  victories: number | null,
+) {
+  context.fillStyle = 'rgba(255, 249, 232, 0.96)';
+  context.fillRect(x, y, 280, 74);
+  context.strokeStyle = 'rgba(116, 137, 79, 0.42)';
+  context.strokeRect(x, y, 280, 74);
+  context.fillStyle = '#2f4824';
+  context.font = '700 20px Georgia';
+  context.fillText(label, x + 16, y + 26);
+  context.font = '600 15px Georgia';
+  context.fillText(`${iv}% IV`, alignRight ? x + 210 : x + 16, y + 48);
+  if (victories !== null) {
+    context.fillText(`Ascension ${Math.min(victories, EVOLUTION_VICTORIES_REQUIRED)}/${EVOLUTION_VICTORIES_REQUIRED}`, x + 96, y + 48);
+  }
+  drawVigorBar(context, x + 16, y + 54, 248, vigor, maxVigor);
+}
+
+function drawVigorBar(
+  context: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  width: number,
+  value: number,
+  maxValue: number,
+) {
+  const ratio = maxValue <= 0 ? 0 : clamp01(value / maxValue);
+  context.fillStyle = 'rgba(45, 59, 34, 0.18)';
+  context.fillRect(x, y, width, 12);
+  context.fillStyle = ratio > 0.55 ? '#6eaf53' : ratio > 0.25 ? '#d7b34e' : '#d76a54';
+  context.fillRect(x, y, Math.max(0, width * ratio), 12);
 }
 
 function drawLoadingState(context: CanvasRenderingContext2D, error: string | null) {
@@ -602,17 +1581,23 @@ function advanceGameState(
 ): GameState {
   let next = current;
 
-  if (current.notice && current.notice.expiresAt <= timestamp) {
+  if (next.notice && next.notice.expiresAt <= timestamp) {
     next = { ...next, notice: null };
   }
 
+  if (next.battle.phase !== 'idle') {
+    return next;
+  }
+
   next = advanceFishing(next, timestamp);
-  next = advanceMovement(next, timestamp, bufferedDirection, heldDirection);
+  next = advanceCreatures(next, timestamp);
+  next = advancePlayerMovement(next, timestamp, bufferedDirection, heldDirection);
   next = applyTrigger(next, timestamp);
+
   return next;
 }
 
-function advanceMovement(
+function advancePlayerMovement(
   current: GameState,
   timestamp: number,
   bufferedDirection: Direction | null,
@@ -631,7 +1616,7 @@ function advanceMovement(
     const nextMove = directionToMove(nextDirection);
     if (!nextMove) return current;
 
-    const moved = attemptMove(player, nextMove, timestamp, map.colliders);
+    const moved = attemptPlayerMove(player, nextMove, timestamp, map.colliders);
     return moved === player ? current : { ...current, player: moved };
   }
 
@@ -670,8 +1655,72 @@ function advanceMovement(
     return { ...current, player: settled };
   }
 
-  const moved = attemptMove(settled, nextMove, timestamp, map.colliders);
+  const moved = attemptPlayerMove(settled, nextMove, timestamp, map.colliders);
   return { ...current, player: moved };
+}
+
+function advanceCreatures(current: GameState, timestamp: number): GameState {
+  const mapCreatures = current.creaturesByMap.south;
+  if (mapCreatures.length === 0) return current;
+
+  let changed = false;
+  const updated = mapCreatures.map((creature) => {
+    if (creature.moving) {
+      const progress = Math.min((timestamp - creature.moveStartedAt) / CREATURE_STEP_MS, 1);
+      if (progress < 1) {
+        changed = true;
+        return {
+          ...creature,
+          x: lerp(creature.startX, creature.targetX, progress),
+          y: lerp(creature.startY, creature.targetY, progress),
+        };
+      }
+
+      changed = true;
+      return {
+        ...creature,
+        x: creature.targetX,
+        y: creature.targetY,
+        startX: creature.targetX,
+        startY: creature.targetY,
+        moving: false,
+        lastDecisionAt: timestamp,
+      };
+    }
+
+    if (timestamp - creature.lastDecisionAt < 900 + (creature.id % 3) * 220) {
+      return creature;
+    }
+
+    const choices: Array<MoveIntent | null> = [
+      { dx: 0, dy: -1, facing: 'up' },
+      { dx: 0, dy: 1, facing: 'down' },
+      { dx: -1, dy: 0, facing: 'left' },
+      { dx: 1, dy: 0, facing: 'right' },
+      null,
+    ];
+    const choice = choices[Math.floor(Math.random() * choices.length)];
+    if (!choice) {
+      changed = true;
+      return {
+        ...creature,
+        lastDecisionAt: timestamp,
+      };
+    }
+
+    changed = true;
+    return attemptCreatureMove(creature, choice, timestamp, MAPS.south.colliders);
+  });
+
+  if (!changed) return current;
+
+  return {
+    ...current,
+    creaturesByMap: {
+      ...current.creaturesByMap,
+      south: updated,
+    },
+  };
 }
 
 function advanceFishing(current: GameState, timestamp: number): GameState {
@@ -685,9 +1734,9 @@ function advanceFishing(current: GameState, timestamp: number): GameState {
         phase: 'waiting',
       },
       notice: {
-        text: 'La ligne flotte. Ca mord quand ca mord.',
+        text: 'La ligne flotte. Le lac decide quand il est d humeur.',
         tone: 'info',
-        expiresAt: timestamp + 1600,
+        expiresAt: timestamp + 1400,
       },
     };
   }
@@ -696,7 +1745,7 @@ function advanceFishing(current: GameState, timestamp: number): GameState {
     const caught = rollFish();
     return {
       ...current,
-      inventory: [caught, ...current.inventory].slice(0, 18),
+      fishInventory: [caught, ...current.fishInventory].slice(0, 24),
       fishing: {
         ...current.fishing,
         phase: 'reeling',
@@ -723,8 +1772,7 @@ function advanceFishing(current: GameState, timestamp: number): GameState {
 }
 
 function applyTrigger(current: GameState, timestamp: number): GameState {
-  if (current.player.moving) return current;
-  if (current.fishing.phase !== 'idle') return current;
+  if (current.player.moving || current.fishing.phase !== 'idle') return current;
 
   const trigger = findTrigger(MAPS[current.mapId], current.player);
   if (!trigger) return current;
@@ -745,41 +1793,273 @@ function applyTrigger(current: GameState, timestamp: number): GameState {
     },
     fishing: { phase: 'idle' },
     notice: {
-      text: trigger.targetMap === 'inside' ? 'Tu entres dans la maison.' : 'Retour dehors.',
+      text:
+        trigger.kind === 'door'
+          ? trigger.targetMap === 'inside'
+            ? 'Tu entres dans la maison.'
+            : 'Retour dehors.'
+          : trigger.targetMap === 'south'
+            ? 'Tu descends vers la route sauvage.'
+            : 'Retour au village.',
       tone: 'info',
       expiresAt: timestamp + 1800,
     },
   };
 }
 
-function startFishing(current: GameState, timestamp: number): GameState {
-  if (current.mapId !== 'outside') {
+function handlePrimaryAction(current: GameState, timestamp: number): GameState {
+  if (current.player.moving) return current;
+  if (current.battle.phase !== 'idle') return current;
+
+  const merchant = findNearbyMerchant(MAPS[current.mapId], current.player);
+  if (merchant) {
+    return sellFishInventory(current, merchant, timestamp);
+  }
+
+  if (current.fishing.phase !== 'idle') {
     return {
       ...current,
       notice: {
-        text: 'Pas de lac ici. Evite de pecher dans le parquet.',
+        text: 'Patiente, ta ligne travaille deja.',
         tone: 'info',
-        expiresAt: timestamp + 1800,
+        expiresAt: timestamp + 1500,
       },
     };
   }
 
-  if (current.player.moving || current.fishing.phase !== 'idle') {
-    return current;
+  const creature = findNearbyCreature(current);
+  if (creature) {
+    return startBattle(current, creature, timestamp);
   }
 
   const spot = findFishingSpot(MAPS[current.mapId], current.player);
-  if (!spot) {
+  if (spot) {
+    return startFishing(current, spot, timestamp);
+  }
+
+  return {
+    ...current,
+    notice: {
+      text:
+        current.mapId === 'south'
+          ? 'Les creatures ne vont pas sauter dans tes bras. Approche-toi.'
+          : current.mapId === 'outside'
+            ? 'Essaie pres du marchand, du lac ou du chemin du bas.'
+            : 'Ici, il n y a rien a activer pour l instant.',
+      tone: 'info',
+      expiresAt: timestamp + 1800,
+    },
+  };
+}
+
+function sellFishInventory(current: GameState, merchant: Merchant, timestamp: number): GameState {
+  if (current.fishInventory.length === 0) {
     return {
       ...current,
       notice: {
-        text: 'Approche-toi vraiment du bord du lac.',
+        text: `${merchant.label}: reviens avec du poisson, pas avec du vent.`,
         tone: 'info',
         expiresAt: timestamp + 1800,
       },
     };
   }
 
+  const payout = Number(getFishInventoryValue(current.fishInventory).toFixed(1));
+  return {
+    ...current,
+    fishInventory: [],
+    gold: Number((current.gold + payout).toFixed(1)),
+    notice: {
+      text: `${merchant.label}: ${payout.toFixed(1)} pieces pour tout le poisson. Marche honnete, pour une fois.`,
+      tone: 'success',
+      expiresAt: timestamp + 2400,
+    },
+  };
+}
+
+function startBattle(current: GameState, creature: CreatureInstance, timestamp: number): GameState {
+  const ally = current.capturedCreatures[0];
+  if (!ally) {
+    return {
+      ...current,
+      notice: {
+        text: 'Il te faut au moins une creature liee pour engager un affrontement.',
+        tone: 'info',
+        expiresAt: timestamp + 2200,
+      },
+    };
+  }
+
+  return {
+    ...current,
+    battle: {
+      phase: 'active',
+      wild: creature,
+      ally,
+      allyVigor: computeVigor(ally),
+      allyMaxVigor: computeVigor(ally),
+      wildVigor: computeVigor(creature),
+      wildMaxVigor: computeVigor(creature),
+      log: `${ally.speciesName} entre en resonance avec ${CREATURE_SPECIES[creature.speciesId].name}.`,
+    },
+    notice: {
+      text: 'Affrontement lance. Utilise 1, 2 ou 3.',
+      tone: 'info',
+      expiresAt: timestamp + 1800,
+    },
+  };
+}
+
+function handleBattleInput(current: GameState, key: string, timestamp: number): GameState {
+  if (current.battle.phase === 'idle') return current;
+
+  const actionByKey: Record<string, BattleAction> = {
+    '1': 'frappe',
+    '2': 'sceau',
+    '3': 'repli',
+  };
+  const action = actionByKey[key];
+  if (!action) return current;
+
+  return resolveBattleAction(current, action, timestamp);
+}
+
+function resolveBattleAction(current: GameState, action: BattleAction, timestamp: number): GameState {
+  if (current.battle.phase === 'idle') return current;
+  const battle = current.battle;
+  const wildSpecies = CREATURE_SPECIES[battle.wild.speciesId];
+  const allyPower = computePower(battle.ally);
+  const wildPower = computePower(battle.wild);
+
+  if (action === 'repli') {
+    if (Math.random() < 0.82) {
+      return {
+        ...current,
+        battle: { phase: 'idle' },
+        notice: {
+          text: 'Repli propre. Tu coupes la resonance et tu files.',
+          tone: 'info',
+          expiresAt: timestamp + 1800,
+        },
+      };
+    }
+
+    return applyWildCounter(
+      current,
+      `Le repli rate. ${wildSpecies.name} te lit comme un livre ouvert.`,
+      wildPower,
+      timestamp,
+    );
+  }
+
+  if (action === 'sceau') {
+    const captureChance = computeSealChance(battle.wildVigor, battle.wildMaxVigor, battle.wild);
+    if (Math.random() < captureChance) {
+      return captureCreature(current, battle.wild, timestamp, `Sceau reussi sur ${wildSpecies.name}.`);
+    }
+
+    return applyWildCounter(
+      current,
+      `Le sceau craque. ${wildSpecies.name} refuse encore le lien.`,
+      wildPower,
+      timestamp,
+    );
+  }
+
+  const nextWildVigor = Math.max(0, battle.wildVigor - allyPower);
+  if (nextWildVigor <= 0) {
+    const replacement = createEncounter(battle.wild.slotId, battle.wild.roamBounds);
+    const ascension = grantVictoryToLeader(current.capturedCreatures, battle.ally.id);
+    return {
+      ...current,
+      creaturesByMap: {
+        ...current.creaturesByMap,
+        south: current.creaturesByMap.south.map((entry) => (entry.id === battle.wild.id ? replacement : entry)),
+      },
+      capturedCreatures: ascension.creatures,
+      battle: { phase: 'idle' },
+      notice: {
+        text: `${battle.ally.speciesName} remporte le duel. ${wildSpecies.name} s eparpille dans les fourres.${ascension.notice ? ` ${ascension.notice}` : ''}`,
+        tone: 'success',
+        expiresAt: timestamp + 2200,
+      },
+    };
+  }
+
+  return applyWildCounter(
+    {
+      ...current,
+      battle: {
+        ...battle,
+        wildVigor: nextWildVigor,
+        log: `${battle.ally.speciesName} frappe. ${wildSpecies.name} vacille.`,
+      },
+    },
+    `${battle.ally.speciesName} frappe. ${wildSpecies.name} reste debout.`,
+    wildPower,
+    timestamp,
+  );
+}
+
+function applyWildCounter(current: GameState, introLog: string, damage: number, timestamp: number): GameState {
+  if (current.battle.phase === 'idle') return current;
+  const battle = current.battle;
+  const nextAllyVigor = Math.max(0, battle.allyVigor - damage);
+  const wildSpecies = CREATURE_SPECIES[battle.wild.speciesId];
+
+  if (nextAllyVigor <= 0) {
+    return {
+      ...current,
+      battle: { phase: 'idle' },
+      notice: {
+        text: `${introLog} ${wildSpecies.name} brise la resonance. Duel perdu.`,
+        tone: 'info',
+        expiresAt: timestamp + 2400,
+      },
+    };
+  }
+
+  return {
+    ...current,
+    battle: {
+      ...battle,
+      allyVigor: nextAllyVigor,
+      log: `${introLog} ${wildSpecies.name} contre-attaque pour ${damage} vigueur.`,
+    },
+  };
+}
+
+function captureCreature(current: GameState, creature: CreatureInstance, timestamp: number, prefix?: string): GameState {
+  const species = CREATURE_SPECIES[creature.speciesId];
+  const ascension =
+    current.battle.phase === 'idle' ? { creatures: current.capturedCreatures, notice: '' } : grantVictoryToLeader(current.capturedCreatures, current.battle.ally.id);
+  const captured: CapturedCreature = {
+    id: Date.now() + Math.floor(Math.random() * 1000),
+    speciesId: creature.speciesId,
+    speciesName: species.name,
+    shiny: creature.shiny,
+    iv: creature.iv,
+    victories: 0,
+  };
+  const replacement = createEncounter(creature.slotId, creature.roamBounds);
+
+  return {
+    ...current,
+    creaturesByMap: {
+      ...current.creaturesByMap,
+      south: current.creaturesByMap.south.map((entry) => (entry.id === creature.id ? replacement : entry)),
+    },
+    capturedCreatures: [captured, ...ascension.creatures].slice(0, 30),
+    battle: { phase: 'idle' },
+    notice: {
+      text: `${prefix ? `${prefix} ` : ''}${creature.shiny ? 'Shiny ' : ''}${species.name} capture${creature.shiny ? 'e' : ''}: ${species.types.join('/')} ${creature.iv}% IV, rarete ${species.rarity.toLowerCase()}.${ascension.notice ? ` ${ascension.notice}` : ''}`,
+      tone: 'success',
+      expiresAt: timestamp + 2600,
+    },
+  };
+}
+
+function startFishing(current: GameState, spot: FishingSpot, timestamp: number): GameState {
   const waitDuration = 2200 + Math.random() * 2400;
   return {
     ...current,
@@ -799,12 +2079,12 @@ function startFishing(current: GameState, timestamp: number): GameState {
     notice: {
       text: `${spot.label}: lancer de ligne...`,
       tone: 'info',
-      expiresAt: timestamp + waitDuration,
+      expiresAt: timestamp + 1400,
     },
   };
 }
 
-function attemptMove(player: PlayerState, move: MoveIntent, timestamp: number, colliders: Rect[]): PlayerState {
+function attemptPlayerMove(player: PlayerState, move: MoveIntent, timestamp: number, colliders: Rect[]): PlayerState {
   const step = 34;
   const nextX = clamp(player.x + move.dx * step, 42, CANVAS_WIDTH - 42);
   const nextY = clamp(player.y + move.dy * step, 58, CANVAS_HEIGHT - 20);
@@ -828,6 +2108,51 @@ function attemptMove(player: PlayerState, move: MoveIntent, timestamp: number, c
     targetY: nextY,
     moving: true,
     moveStartedAt: timestamp,
+  };
+}
+
+function attemptCreatureMove(
+  creature: CreatureInstance,
+  move: MoveIntent,
+  timestamp: number,
+  colliders: Rect[],
+): CreatureInstance {
+  const step = 22;
+  const nextX = clamp(
+    creature.x + move.dx * step,
+    creature.roamBounds.x + 18,
+    creature.roamBounds.x + creature.roamBounds.width - 18,
+  );
+  const nextY = clamp(
+    creature.y + move.dy * step,
+    creature.roamBounds.y + 18,
+    creature.roamBounds.y + creature.roamBounds.height - 18,
+  );
+  const body = {
+    x: nextX - CREATURE_BODY_WIDTH / 2,
+    y: nextY - 24,
+    width: CREATURE_BODY_WIDTH,
+    height: CREATURE_BODY_HEIGHT,
+  };
+
+  if (colliders.some((collider) => intersects(body, collider))) {
+    return {
+      ...creature,
+      facing: move.facing,
+      lastDecisionAt: timestamp,
+    };
+  }
+
+  return {
+    ...creature,
+    facing: move.facing,
+    startX: creature.x,
+    startY: creature.y,
+    targetX: nextX,
+    targetY: nextY,
+    moving: true,
+    moveStartedAt: timestamp,
+    lastDecisionAt: timestamp,
   };
 }
 
@@ -907,7 +2232,7 @@ function detectSpriteBounds(sheet: HTMLCanvasElement) {
         }
       }
 
-      if (pixelCount > 500) {
+      if (pixelCount > 450) {
         boxes.push({
           x: Math.max(minX - 8, 0),
           y: Math.max(minY - 8, 0),
@@ -922,10 +2247,6 @@ function detectSpriteBounds(sheet: HTMLCanvasElement) {
     const rowDelta = left.y - right.y;
     return Math.abs(rowDelta) > 40 ? rowDelta : left.x - right.x;
   });
-}
-
-function isOpaquePixel(data: Uint8ClampedArray, offset: number) {
-  return data[offset + 3] > 8;
 }
 
 function removeGreenScreen(source: HTMLImageElement) {
@@ -944,13 +2265,232 @@ function removeGreenScreen(source: HTMLImageElement) {
     const green = data[index + 1];
     const blue = data[index + 2];
 
-    if (green > 210 && red < 90 && blue < 90) {
+    if (green > 210 && red < 110 && blue < 110) {
       data[index + 3] = 0;
     }
   }
 
   context.putImageData(imageData, 0, 0);
   return canvas;
+}
+
+function shiftSheetHue(source: HTMLCanvasElement, hueDelta: number, satBoost: number, lightBoost: number) {
+  const canvas = document.createElement('canvas');
+  canvas.width = source.width;
+  canvas.height = source.height;
+  const context = canvas.getContext('2d');
+  if (!context) return canvas;
+
+  context.drawImage(source, 0, 0);
+  const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+  const { data } = imageData;
+
+  for (let index = 0; index < data.length; index += 4) {
+    if (data[index + 3] === 0) continue;
+    const [h, s, l] = rgbToHsl(data[index], data[index + 1], data[index + 2]);
+    const [red, green, blue] = hslToRgb(
+      normalizeHue(h + hueDelta),
+      clamp01(s + satBoost),
+      clamp01(l + lightBoost),
+    );
+    data[index] = red;
+    data[index + 1] = green;
+    data[index + 2] = blue;
+  }
+
+  context.putImageData(imageData, 0, 0);
+  return canvas;
+}
+
+function remixCreatureSheet(source: HTMLCanvasElement, frames: FrameMap, variant: CreatureVisualVariant) {
+  if (variant === 'none') return source;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = source.width;
+  canvas.height = source.height;
+  const context = canvas.getContext('2d');
+  if (!context) return source;
+
+  context.drawImage(source, 0, 0);
+  for (const direction of ['down', 'left', 'right', 'up'] as const) {
+    for (const frame of frames[direction]) {
+      drawVariantAccent(context, frame, direction, variant);
+    }
+  }
+
+  return canvas;
+}
+
+function drawVariantAccent(
+  context: CanvasRenderingContext2D,
+  frame: Rect,
+  direction: Direction,
+  variant: CreatureVisualVariant,
+) {
+  const centerX = frame.x + frame.width / 2;
+  const centerY = frame.y + frame.height / 2;
+  const leftX = frame.x + 8;
+  const rightX = frame.x + frame.width - 8;
+  const topY = frame.y + 10;
+  const midY = centerY + 2;
+  const bottomY = frame.y + frame.height - 10;
+  const lookLeft = direction === 'left';
+  const lookRight = direction === 'right';
+  const wingShift = lookLeft ? -6 : lookRight ? 6 : 0;
+
+  context.save();
+  switch (variant) {
+    case 'ramureine':
+      fillLeaf(context, centerX - 10, topY + 6, 8, 14, '#6fae57', -0.6);
+      fillLeaf(context, centerX + 10, topY + 6, 8, 14, '#7ebc5f', 0.6);
+      fillLeaf(context, centerX, topY - 2, 7, 12, '#cde789', 0);
+      break;
+    case 'floramuse':
+      fillPetal(context, centerX, topY + 4, 14, '#f7c1d8');
+      fillLeaf(context, centerX - 14, midY + 8, 9, 16, '#70b56a', -0.8);
+      fillLeaf(context, centerX + 14, midY + 8, 9, 16, '#70b56a', 0.8);
+      break;
+    case 'pyrogriffe':
+      fillSpike(context, centerX - 12, topY + 8, centerX - 3, topY - 6, centerX + 2, topY + 10, '#ff9651');
+      fillSpike(context, centerX + 12, topY + 8, centerX + 3, topY - 6, centerX - 2, topY + 10, '#ffc164');
+      fillSpike(context, rightX - 6, bottomY - 10, rightX + 4, bottomY - 2, rightX - 2, bottomY - 16, '#ff6d3b');
+      break;
+    case 'volcarnage':
+      fillSpike(context, centerX - 14, topY + 6, centerX - 6, topY - 10, centerX + 2, topY + 6, '#ff784f');
+      fillSpike(context, centerX, topY + 2, centerX + 6, topY - 12, centerX + 12, topY + 6, '#ffcf66');
+      fillSpike(context, centerX + 16, topY + 8, centerX + 24, topY - 8, centerX + 28, topY + 10, '#d84e3d');
+      break;
+    case 'abyssobulle':
+      strokeRibbon(context, centerX, midY - 6, centerX - 16 + wingShift, bottomY - 4, '#9be7ff');
+      strokeRibbon(context, centerX + 4, midY - 8, centerX + 16 + wingShift, bottomY - 6, '#7ad5ff');
+      fillBubble(context, centerX + 15, topY + 4, 5, '#d7f6ff');
+      break;
+    case 'coralythe':
+      fillCoralBranch(context, centerX - 12, topY + 8, '#ff9278');
+      fillCoralBranch(context, centerX + 10, topY + 6, '#ffb08d');
+      fillLeaf(context, centerX, bottomY - 8, 8, 14, '#6dcf8b', 0);
+      break;
+    case 'bastionyx':
+      fillPlate(context, centerX - 18, midY - 8, 36, 14, '#8d9499');
+      fillPlate(context, centerX - 14, topY + 2, 28, 10, '#aab2b8');
+      break;
+    case 'monolithe':
+      fillPlate(context, centerX - 16, topY - 4, 32, 16, '#b7c0c6');
+      fillPlate(context, centerX - 20, midY + 4, 40, 14, '#7f8a90');
+      fillRune(context, centerX, midY + 10, '#dff7ff');
+      break;
+    case 'fulguroc':
+      fillSpike(context, centerX - 16, topY + 6, centerX - 4, topY - 8, centerX + 4, topY + 8, '#fce65c');
+      fillSpike(context, centerX + 4, topY + 2, centerX + 16, topY - 10, centerX + 24, topY + 10, '#fff39b');
+      strokeRibbon(context, centerX + 6, midY - 6, rightX + 3, bottomY - 10, '#ffe34e');
+      break;
+    case 'tempestor':
+      strokeRibbon(context, centerX - 6, midY - 8, leftX - 4 + wingShift, bottomY - 10, '#ecf4ff');
+      strokeRibbon(context, centerX + 8, midY - 8, rightX + 6 + wingShift, bottomY - 8, '#d6e8ff');
+      fillSpike(context, centerX, topY - 2, centerX + 7, topY - 14, centerX + 14, topY + 4, '#fff6ba');
+      break;
+    case 'none':
+      break;
+  }
+  context.restore();
+}
+
+function fillLeaf(
+  context: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  radiusX: number,
+  radiusY: number,
+  color: string,
+  rotation: number,
+) {
+  context.save();
+  context.translate(x, y);
+  context.rotate(rotation);
+  context.fillStyle = color;
+  context.beginPath();
+  context.ellipse(0, 0, radiusX, radiusY, 0, 0, Math.PI * 2);
+  context.fill();
+  context.restore();
+}
+
+function fillPetal(context: CanvasRenderingContext2D, x: number, y: number, radius: number, color: string) {
+  for (const offset of [-0.9, -0.3, 0.3, 0.9] as const) {
+    fillLeaf(context, x + offset * 7, y + Math.abs(offset) * 3, 6, radius, color, offset);
+  }
+}
+
+function fillSpike(
+  context: CanvasRenderingContext2D,
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+  x3: number,
+  y3: number,
+  color: string,
+) {
+  context.fillStyle = color;
+  context.beginPath();
+  context.moveTo(x1, y1);
+  context.lineTo(x2, y2);
+  context.lineTo(x3, y3);
+  context.closePath();
+  context.fill();
+}
+
+function strokeRibbon(
+  context: CanvasRenderingContext2D,
+  fromX: number,
+  fromY: number,
+  toX: number,
+  toY: number,
+  color: string,
+) {
+  context.strokeStyle = color;
+  context.lineWidth = 4;
+  context.lineCap = 'round';
+  context.beginPath();
+  context.moveTo(fromX, fromY);
+  context.quadraticCurveTo((fromX + toX) / 2, fromY - 8, toX, toY);
+  context.stroke();
+}
+
+function fillBubble(context: CanvasRenderingContext2D, x: number, y: number, radius: number, color: string) {
+  context.fillStyle = color;
+  context.beginPath();
+  context.arc(x, y, radius, 0, Math.PI * 2);
+  context.fill();
+}
+
+function fillCoralBranch(context: CanvasRenderingContext2D, x: number, y: number, color: string) {
+  context.strokeStyle = color;
+  context.lineWidth = 5;
+  context.lineCap = 'round';
+  context.beginPath();
+  context.moveTo(x, y + 10);
+  context.lineTo(x, y - 6);
+  context.moveTo(x, y);
+  context.lineTo(x - 8, y - 10);
+  context.moveTo(x, y - 2);
+  context.lineTo(x + 9, y - 12);
+  context.stroke();
+}
+
+function fillPlate(context: CanvasRenderingContext2D, x: number, y: number, width: number, height: number, color: string) {
+  context.fillStyle = color;
+  context.fillRect(x, y, width, height);
+}
+
+function fillRune(context: CanvasRenderingContext2D, x: number, y: number, color: string) {
+  context.strokeStyle = color;
+  context.lineWidth = 2;
+  context.beginPath();
+  context.moveTo(x, y - 6);
+  context.lineTo(x, y + 6);
+  context.moveTo(x - 5, y);
+  context.lineTo(x + 5, y);
+  context.stroke();
 }
 
 function loadImage(src: string) {
@@ -978,6 +2518,19 @@ function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
 }
 
+function clamp01(value: number) {
+  return Math.max(0, Math.min(1, value));
+}
+
+function normalizeHue(value: number) {
+  const normalized = value % 1;
+  return normalized < 0 ? normalized + 1 : normalized;
+}
+
+function isOpaquePixel(data: Uint8ClampedArray, offset: number) {
+  return data[offset + 3] > 8;
+}
+
 function findTrigger(map: MapDefinition, player: PlayerState) {
   const body = getPlayerBody(player);
   return map.triggers.find((trigger) => intersects(body, trigger)) ?? null;
@@ -991,6 +2544,21 @@ function findFishingSpot(map: MapDefinition, player: PlayerState) {
   );
 }
 
+function findNearbyMerchant(map: MapDefinition, player: PlayerState) {
+  if (!map.merchant) return null;
+  return Math.hypot(player.x - map.merchant.x, player.y - map.merchant.y) <= map.merchant.radius
+    ? map.merchant
+    : null;
+}
+
+function findNearbyCreature(game: GameState) {
+  const creatures = game.creaturesByMap[game.mapId];
+  if (creatures.length === 0) return null;
+  return (
+    creatures.find((creature) => Math.hypot(game.player.x - creature.x, game.player.y - creature.y) <= 42) ?? null
+  );
+}
+
 function getPlayerBody(player: PlayerState): Rect {
   return {
     x: player.x - PLAYER_BODY_WIDTH / 2,
@@ -998,6 +2566,132 @@ function getPlayerBody(player: PlayerState): Rect {
     width: PLAYER_BODY_WIDTH,
     height: PLAYER_BODY_HEIGHT,
   };
+}
+
+function getActionHint(game: GameState) {
+  if (game.battle.phase !== 'idle') {
+    return 'Duel: 1 Frappe, 2 Sceau, 3 Repli';
+  }
+
+  if (game.fishing.phase !== 'idle') {
+    return 'Peche en cours...';
+  }
+
+  const map = MAPS[game.mapId];
+  const merchant = findNearbyMerchant(map, game.player);
+  if (merchant) {
+    return 'E pour vendre le poisson au marchand';
+  }
+
+  const creature = findNearbyCreature(game);
+  if (creature) {
+    const species = CREATURE_SPECIES[creature.speciesId];
+    return `E pour engager ${creature.shiny ? 'Shiny ' : ''}${species.name} (${species.rarity.toLowerCase()})`;
+  }
+
+  const fishingSpot = findFishingSpot(map, game.player);
+  if (fishingSpot) {
+    return `E pour pecher a ${fishingSpot.label.toLowerCase()}`;
+  }
+
+  const trigger = findTrigger(map, game.player);
+  if (trigger) {
+    return trigger.label;
+  }
+
+  if (game.mapId === 'outside') return 'Maison, marchand, lac, route du sud: tout est la.';
+  if (game.mapId === 'south') return 'Explore les herbes hautes et colle les creatures au corps a corps.';
+  return 'Petite pause au calme avant de ressortir.';
+}
+
+function createStarterCreature(): CapturedCreature {
+  return {
+    id: 1,
+    speciesId: 'brindibouh',
+    speciesName: 'Brindibouh',
+    shiny: false,
+    iv: 62,
+    victories: 0,
+  };
+}
+
+function grantVictoryToLeader(creatures: CapturedCreature[], leaderId: number) {
+  let notice = '';
+  const nextCreatures = creatures.map((creature) => {
+    if (creature.id !== leaderId) {
+      return creature;
+    }
+
+    const species = CREATURE_SPECIES[creature.speciesId];
+    if (!species.evolvesTo) {
+      return {
+        ...creature,
+        victories: Math.min(creature.victories + 1, EVOLUTION_VICTORIES_REQUIRED),
+      };
+    }
+
+    const nextVictories = creature.victories + 1;
+    if (nextVictories < EVOLUTION_VICTORIES_REQUIRED) {
+      return {
+        ...creature,
+        victories: nextVictories,
+      };
+    }
+
+    const evolvedSpecies = CREATURE_SPECIES[species.evolvesTo];
+    notice = `${species.name} entre en ascension et devient ${evolvedSpecies.name}.`;
+    return {
+      ...creature,
+      speciesId: evolvedSpecies.id,
+      speciesName: evolvedSpecies.name,
+      victories: 0,
+    };
+  });
+
+  return {
+    creatures: nextCreatures,
+    notice,
+  };
+}
+
+function computeVigor(target: CapturedCreature | CreatureInstance) {
+  const species = CREATURE_SPECIES[target.speciesId];
+  const base = 46;
+  const stageBonus = species.evolutionStage === 2 ? 12 : 0;
+  return base + Math.round(target.iv * 0.42) + stageBonus;
+}
+
+function computePower(target: CapturedCreature | CreatureInstance) {
+  const species = CREATURE_SPECIES[target.speciesId];
+  const rarityBonus =
+    species.rarity === 'Legendaire'
+      ? 7
+      : species.rarity === 'Epique'
+        ? 5
+        : species.rarity === 'Rare'
+          ? 3
+          : species.rarity === 'Peu commune'
+            ? 2
+            : 0;
+  const stageBonus = species.evolutionStage === 2 ? 4 : 0;
+  return 8 + Math.round(target.iv * 0.12) + rarityBonus + stageBonus;
+}
+
+function computeSealChance(wildVigor: number, wildMaxVigor: number, creature: CreatureInstance) {
+  const species = CREATURE_SPECIES[creature.speciesId];
+  const hpRatio = wildMaxVigor <= 0 ? 1 : wildVigor / wildMaxVigor;
+  const rarityPenalty =
+    species.rarity === 'Legendaire'
+      ? 0.26
+      : species.rarity === 'Epique'
+        ? 0.18
+        : species.rarity === 'Rare'
+          ? 0.1
+          : species.rarity === 'Peu commune'
+            ? 0.04
+            : 0;
+  const shinyPenalty = creature.shiny ? 0.08 : 0;
+  return clamp01(0.18 + (1 - hpRatio) * 0.62 - rarityPenalty - shinyPenalty);
 }
 
 function rollFish(): CaughtFish {
@@ -1028,17 +2722,16 @@ function rollFish(): CaughtFish {
   };
 }
 
-function getRodHand(player: PlayerState) {
-  switch (player.facing) {
-    case 'up':
-      return { x: player.x + 6, y: player.y - 52 };
-    case 'down':
-      return { x: player.x + 14, y: player.y - 44 };
-    case 'left':
-      return { x: player.x - 8, y: player.y - 44 };
-    case 'right':
-      return { x: player.x + 12, y: player.y - 44 };
-  }
+function getFishInventoryValue(inventory: CaughtFish[]) {
+  return inventory.reduce((sum, fish) => sum + fish.value, 0);
+}
+
+function renderCapturedLabel(creature: CapturedCreature) {
+  const species = CREATURE_SPECIES[creature.speciesId];
+  const ascension = species.evolvesTo
+    ? ` | Ascension ${Math.min(creature.victories, EVOLUTION_VICTORIES_REQUIRED)}/${EVOLUTION_VICTORIES_REQUIRED}`
+    : '';
+  return `${creature.shiny ? 'Shiny ' : ''}${creature.speciesName} ${species.types.join('/')} ${creature.iv}% IV${ascension}`;
 }
 
 function countFishBySpecies(inventory: CaughtFish[]) {
@@ -1052,7 +2745,126 @@ function countFishBySpecies(inventory: CaughtFish[]) {
     }
   }
 
-  return Array.from(counts.values()).sort((left, right) => right.count - left.count || left.species.localeCompare(right.species));
+  return Array.from(counts.values()).sort(
+    (left, right) => right.count - left.count || left.species.localeCompare(right.species),
+  );
+}
+
+function randomIv() {
+  return Math.floor(Math.random() * 101);
+}
+
+function createEncounter(slotId: number, roamBounds: Rect): CreatureInstance {
+  const species = rollEncounterSpecies();
+  const x = roamBounds.x + roamBounds.width / 2;
+  const y = roamBounds.y + roamBounds.height / 2;
+
+  return {
+    id: Date.now() + slotId * 100 + Math.floor(Math.random() * 100),
+    slotId,
+    speciesId: species.id,
+    x,
+    y,
+    startX: x,
+    startY: y,
+    targetX: x,
+    targetY: y,
+    moving: false,
+    moveStartedAt: 0,
+    lastDecisionAt: 0,
+    facing: slotId % 2 === 0 ? 'left' : 'right',
+    shiny: Math.random() < SHINY_RATE,
+    iv: randomIv(),
+    roamBounds,
+  };
+}
+
+function rollEncounterSpecies(): CreatureSpecies {
+  const pool = Object.values(CREATURE_SPECIES);
+  const totalWeight = pool.reduce((sum, species) => sum + species.encounterWeight, 0);
+  let roll = Math.random() * totalWeight;
+
+  for (const species of pool) {
+    roll -= species.encounterWeight;
+    if (roll <= 0) return species;
+  }
+
+  return pool[0];
+}
+
+function getRodHand(player: PlayerState) {
+  switch (player.facing) {
+    case 'up':
+      return { x: player.x + 6, y: player.y - 44 };
+    case 'down':
+      return { x: player.x + 12, y: player.y - 36 };
+    case 'left':
+      return { x: player.x - 8, y: player.y - 36 };
+    case 'right':
+      return { x: player.x + 10, y: player.y - 36 };
+  }
+}
+
+function rgbToHsl(red: number, green: number, blue: number): [number, number, number] {
+  const r = red / 255;
+  const g = green / 255;
+  const b = blue / 255;
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const lightness = (max + min) / 2;
+
+  if (max === min) {
+    return [0, 0, lightness];
+  }
+
+  const delta = max - min;
+  const saturation =
+    lightness > 0.5 ? delta / (2 - max - min) : delta / (max + min);
+  let hue = 0;
+
+  switch (max) {
+    case r:
+      hue = (g - b) / delta + (g < b ? 6 : 0);
+      break;
+    case g:
+      hue = (b - r) / delta + 2;
+      break;
+    default:
+      hue = (r - g) / delta + 4;
+      break;
+  }
+
+  hue /= 6;
+  return [hue, saturation, lightness];
+}
+
+function hslToRgb(hue: number, saturation: number, lightness: number): [number, number, number] {
+  if (saturation === 0) {
+    const value = Math.round(lightness * 255);
+    return [value, value, value];
+  }
+
+  const q =
+    lightness < 0.5
+      ? lightness * (1 + saturation)
+      : lightness + saturation - lightness * saturation;
+  const p = 2 * lightness - q;
+
+  return [
+    Math.round(hueToRgb(p, q, hue + 1 / 3) * 255),
+    Math.round(hueToRgb(p, q, hue) * 255),
+    Math.round(hueToRgb(p, q, hue - 1 / 3) * 255),
+  ];
+}
+
+function hueToRgb(p: number, q: number, t: number) {
+  let value = t;
+  if (value < 0) value += 1;
+  if (value > 1) value -= 1;
+  if (value < 1 / 6) return p + (q - p) * 6 * value;
+  if (value < 1 / 2) return q;
+  if (value < 2 / 3) return p + (q - p) * (2 / 3 - value) * 6;
+  return p;
 }
 
 export default App;
