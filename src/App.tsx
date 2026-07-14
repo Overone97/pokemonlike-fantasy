@@ -3,6 +3,9 @@ import { useEffect, useRef, useState } from 'react';
 const OUTSIDE_MAP_SRC = '/pokemonlike-fantasy/assets/generated/restart/map.png';
 const INSIDE_MAP_SRC = '/pokemonlike-fantasy/assets/generated/restart/house-interior.png';
 const SOUTH_MAP_SRC = '/pokemonlike-fantasy/assets/generated/restart/route-south.png';
+const NORTH_MAP_SRC = 'generated:north-ridge';
+const EAST_MAP_SRC = 'generated:east-coast';
+const WEST_MAP_SRC = 'generated:west-woods';
 const PLAYER_IDLE_SRC = '/pokemonlike-fantasy/assets/generated/restart/player-idle.png';
 const PLAYER_WALK_SRC = '/pokemonlike-fantasy/assets/generated/restart/player-walk.png';
 const BRINDIBOUH_SRC = '/pokemonlike-fantasy/assets/generated/restart/monster-brindibouh.png';
@@ -22,11 +25,12 @@ const PLAYER_BODY_HEIGHT = 26;
 const CREATURE_BODY_WIDTH = 24;
 const CREATURE_BODY_HEIGHT = 22;
 const INTERACT_KEY = 'e';
+const CODEX_KEY = 'c';
 const SHINY_RATE = 0.01;
 const EVOLUTION_VICTORIES_REQUIRED = 3;
 
 type Direction = 'up' | 'down' | 'left' | 'right';
-type MapId = 'outside' | 'inside' | 'south';
+type MapId = 'outside' | 'inside' | 'south' | 'north' | 'east' | 'west';
 type CreatureTemplateId = 'brindibouh' | 'galetout' | 'bullefroth';
 type CreatureSpeciesId =
   | 'brindibouh'
@@ -88,6 +92,12 @@ type Merchant = {
   radius: number;
   label: string;
 };
+type Sanctuary = {
+  x: number;
+  y: number;
+  radius: number;
+  label: string;
+};
 type MapDefinition = {
   id: MapId;
   name: string;
@@ -99,6 +109,7 @@ type MapDefinition = {
   triggers: MapTrigger[];
   fishingSpots: FishingSpot[];
   merchant?: Merchant;
+  sanctuary?: Sanctuary;
 };
 type PlayerState = {
   x: number;
@@ -184,6 +195,7 @@ type CapturedCreature = {
 type CreatureInstance = {
   id: number;
   slotId: number;
+  mapId: MapId;
   speciesId: CreatureSpeciesId;
   x: number;
   y: number;
@@ -217,7 +229,7 @@ type BattleState =
       log: string;
     };
 type LoadedAssets = {
-  maps: Record<MapId, HTMLImageElement>;
+  maps: Record<MapId, HTMLImageElement | HTMLCanvasElement>;
   playerIdleSheet: HTMLCanvasElement;
   playerWalkSheet: HTMLCanvasElement;
   merchantIdleSheet: HTMLCanvasElement;
@@ -236,6 +248,8 @@ type GameState = {
   gold: number;
   battle: BattleState;
   notice: HudNotice | null;
+  seenSpecies: CreatureSpeciesId[];
+  codexOpen: boolean;
 };
 
 const INPUTS: Record<string, MoveIntent> = {
@@ -749,6 +763,82 @@ const SOUTH_SPAWN_SLOTS: Rect[] = [
   { x: 638, y: 188, width: 126, height: 94 },
 ];
 
+const NORTH_SPAWN_SLOTS: Rect[] = [
+  { x: 158, y: 150, width: 170, height: 112 },
+  { x: 404, y: 164, width: 150, height: 108 },
+  { x: 644, y: 150, width: 162, height: 114 },
+  { x: 230, y: 352, width: 178, height: 124 },
+  { x: 536, y: 338, width: 180, height: 128 },
+  { x: 720, y: 430, width: 120, height: 112 },
+];
+
+const EAST_SPAWN_SLOTS: Rect[] = [
+  { x: 140, y: 152, width: 190, height: 120 },
+  { x: 392, y: 178, width: 172, height: 118 },
+  { x: 686, y: 160, width: 146, height: 112 },
+  { x: 242, y: 412, width: 170, height: 126 },
+  { x: 584, y: 430, width: 170, height: 116 },
+];
+
+const WEST_SPAWN_SLOTS: Rect[] = [
+  { x: 150, y: 186, width: 152, height: 112 },
+  { x: 374, y: 146, width: 194, height: 118 },
+  { x: 640, y: 188, width: 158, height: 118 },
+  { x: 236, y: 408, width: 170, height: 122 },
+  { x: 536, y: 392, width: 182, height: 124 },
+];
+
+const ENCOUNTER_POOLS: Record<MapId, CreatureSpeciesId[]> = {
+  outside: [],
+  inside: [],
+  south: [
+    'brindibouh',
+    'ramureine',
+    'mousseron',
+    'floramuse',
+    'emberet',
+    'pyrogriffe',
+    'cendrours',
+    'volcarnage',
+    'voltlynx',
+    'fulguroc',
+    'solenid',
+  ],
+  north: [
+    'mousseron',
+    'floramuse',
+    'florazel',
+    'cristalune',
+    'spectrik',
+    'ramureine',
+    'silexou',
+    'monolithe',
+    'solenid',
+  ],
+  east: [
+    'bullefroth',
+    'abyssobulle',
+    'algobulle',
+    'coralythe',
+    'orageon',
+    'tempestor',
+    'pyroloutre',
+    'spectrik',
+    'cristalune',
+  ],
+  west: [
+    'galetout',
+    'bastionyx',
+    'silexou',
+    'monolithe',
+    'bourbizon',
+    'ferabec',
+    'dracombre',
+    'voltlynx',
+    'noctplume',
+  ],
+};
+
 const MAPS: Record<MapId, MapDefinition> = {
   outside: {
     id: 'outside',
@@ -758,9 +848,12 @@ const MAPS: Record<MapId, MapDefinition> = {
     spawnY: 360,
     spawnFacing: 'down',
     colliders: [
-      { x: 0, y: 0, width: CANVAS_WIDTH, height: 20 },
-      { x: 0, y: 0, width: 26, height: CANVAS_HEIGHT },
-      { x: CANVAS_WIDTH - 26, y: 0, width: 26, height: CANVAS_HEIGHT },
+      { x: 0, y: 0, width: 412, height: 20 },
+      { x: 548, y: 0, width: CANVAS_WIDTH - 548, height: 20 },
+      { x: 0, y: 0, width: 26, height: 244 },
+      { x: 0, y: 394, width: 26, height: CANVAS_HEIGHT - 394 },
+      { x: CANVAS_WIDTH - 26, y: 0, width: 26, height: 236 },
+      { x: CANVAS_WIDTH - 26, y: 390, width: 26, height: CANVAS_HEIGHT - 390 },
       { x: 0, y: CANVAS_HEIGHT - 26, width: 416, height: 26 },
       { x: 544, y: CANVAS_HEIGHT - 26, width: CANVAS_WIDTH - 544, height: 26 },
       { x: 8, y: 92, width: 205, height: 120 },
@@ -775,6 +868,18 @@ const MAPS: Record<MapId, MapDefinition> = {
     ],
     triggers: [
       {
+        x: 424,
+        y: 0,
+        width: 112,
+        height: 48,
+        targetMap: 'north',
+        targetX: 480,
+        targetY: 556,
+        targetFacing: 'up',
+        label: 'Monter vers la crete nord',
+        kind: 'route',
+      },
+      {
         x: 754,
         y: 178,
         width: 62,
@@ -785,6 +890,30 @@ const MAPS: Record<MapId, MapDefinition> = {
         targetFacing: 'up',
         label: 'Entrer dans la maison',
         kind: 'door',
+      },
+      {
+        x: 0,
+        y: 254,
+        width: 50,
+        height: 128,
+        targetMap: 'west',
+        targetX: 872,
+        targetY: 320,
+        targetFacing: 'left',
+        label: 'Prendre la sente ouest',
+        kind: 'route',
+      },
+      {
+        x: 910,
+        y: 246,
+        width: 50,
+        height: 136,
+        targetMap: 'east',
+        targetX: 88,
+        targetY: 324,
+        targetFacing: 'right',
+        label: 'Suivre la cote est',
+        kind: 'route',
       },
       {
         x: 430,
@@ -909,6 +1038,128 @@ const MAPS: Record<MapId, MapDefinition> = {
     ],
     fishingSpots: [],
   },
+  north: {
+    id: 'north',
+    name: 'Crete d aurore',
+    src: NORTH_MAP_SRC,
+    spawnX: 480,
+    spawnY: 556,
+    spawnFacing: 'up',
+    colliders: [
+      { x: 0, y: 0, width: 26, height: CANVAS_HEIGHT },
+      { x: CANVAS_WIDTH - 26, y: 0, width: 26, height: CANVAS_HEIGHT },
+      { x: 0, y: 0, width: CANVAS_WIDTH, height: 26 },
+      { x: 0, y: CANVAS_HEIGHT - 26, width: 420, height: 26 },
+      { x: 540, y: CANVAS_HEIGHT - 26, width: CANVAS_WIDTH - 540, height: 26 },
+      { x: 0, y: 72, width: 186, height: 126 },
+      { x: 742, y: 84, width: 218, height: 138 },
+      { x: 278, y: 282, width: 154, height: 64 },
+      { x: 556, y: 292, width: 156, height: 70 },
+      { x: 88, y: 462, width: 226, height: 92 },
+    ],
+    triggers: [
+      {
+        x: 438,
+        y: 586,
+        width: 84,
+        height: 54,
+        targetMap: 'outside',
+        targetX: 480,
+        targetY: 72,
+        targetFacing: 'down',
+        label: 'Redescendre au village',
+        kind: 'route',
+      },
+    ],
+    fishingSpots: [],
+    sanctuary: {
+      x: 510,
+      y: 136,
+      radius: 60,
+      label: 'Source claire',
+    },
+  },
+  east: {
+    id: 'east',
+    name: 'Cote de nacre',
+    src: EAST_MAP_SRC,
+    spawnX: 88,
+    spawnY: 324,
+    spawnFacing: 'right',
+    colliders: [
+      { x: 0, y: 0, width: 26, height: 260 },
+      { x: 0, y: 390, width: 26, height: CANVAS_HEIGHT - 390 },
+      { x: CANVAS_WIDTH - 26, y: 0, width: 26, height: CANVAS_HEIGHT },
+      { x: 0, y: 0, width: CANVAS_WIDTH, height: 28 },
+      { x: 0, y: CANVAS_HEIGHT - 26, width: CANVAS_WIDTH, height: 26 },
+      { x: 164, y: 64, width: 202, height: 124 },
+      { x: 476, y: 122, width: 180, height: 98 },
+      { x: 730, y: 84, width: 176, height: 126 },
+      { x: 128, y: 458, width: 210, height: 90 },
+      { x: 450, y: 420, width: 186, height: 102 },
+    ],
+    triggers: [
+      {
+        x: 0,
+        y: 246,
+        width: 46,
+        height: 136,
+        targetMap: 'outside',
+        targetX: 872,
+        targetY: 314,
+        targetFacing: 'left',
+        label: 'Retour au village',
+        kind: 'route',
+      },
+    ],
+    fishingSpots: [
+      {
+        id: 'east-pier',
+        x: 860,
+        y: 332,
+        radius: 42,
+        facing: 'right',
+        bobberOffsetX: 34,
+        bobberOffsetY: 6,
+        label: 'Jetee de nacre',
+      },
+    ],
+  },
+  west: {
+    id: 'west',
+    name: 'Bois chuchotants',
+    src: WEST_MAP_SRC,
+    spawnX: 872,
+    spawnY: 320,
+    spawnFacing: 'left',
+    colliders: [
+      { x: 0, y: 0, width: 26, height: CANVAS_HEIGHT },
+      { x: CANVAS_WIDTH - 26, y: 0, width: 26, height: 246 },
+      { x: CANVAS_WIDTH - 26, y: 396, width: 26, height: CANVAS_HEIGHT - 396 },
+      { x: 0, y: 0, width: CANVAS_WIDTH, height: 28 },
+      { x: 0, y: CANVAS_HEIGHT - 26, width: CANVAS_WIDTH, height: 26 },
+      { x: 88, y: 92, width: 188, height: 128 },
+      { x: 394, y: 64, width: 174, height: 104 },
+      { x: 676, y: 106, width: 186, height: 122 },
+      { x: 210, y: 434, width: 174, height: 92 },
+      { x: 520, y: 392, width: 202, height: 110 },
+    ],
+    triggers: [
+      {
+        x: 914,
+        y: 254,
+        width: 46,
+        height: 132,
+        targetMap: 'outside',
+        targetX: 84,
+        targetY: 320,
+        targetFacing: 'right',
+        label: 'Retour au village',
+        kind: 'route',
+      },
+    ],
+    fishingSpots: [],
+  },
 };
 
 function createPlayerForMap(mapId: MapId): PlayerState {
@@ -926,8 +1177,8 @@ function createPlayerForMap(mapId: MapId): PlayerState {
   };
 }
 
-function createSouthCreatures(): CreatureInstance[] {
-  return SOUTH_SPAWN_SLOTS.map((roamBounds, index) => createEncounter(index, roamBounds));
+function createCreaturesForMap(mapId: MapId, slots: Rect[]) {
+  return slots.map((roamBounds, index) => createEncounter(mapId, index, roamBounds));
 }
 
 function createInitialGameState(): GameState {
@@ -941,11 +1192,16 @@ function createInitialGameState(): GameState {
     creaturesByMap: {
       outside: [],
       inside: [],
-      south: createSouthCreatures(),
+      south: createCreaturesForMap('south', SOUTH_SPAWN_SLOTS),
+      north: createCreaturesForMap('north', NORTH_SPAWN_SLOTS),
+      east: createCreaturesForMap('east', EAST_SPAWN_SLOTS),
+      west: createCreaturesForMap('west', WEST_SPAWN_SLOTS),
     },
     gold: 0,
     battle: { phase: 'idle' },
     notice: null,
+    seenSpecies: [starter.speciesId],
+    codexOpen: false,
   };
 }
 
@@ -983,6 +1239,15 @@ function App() {
       if (key === '1' || key === '2' || key === '3') {
         event.preventDefault();
         setGame((current) => handleBattleInput(current, key, performance.now()));
+        return;
+      }
+
+      if (key === CODEX_KEY) {
+        event.preventDefault();
+        setGame((current) => ({
+          ...current,
+          codexOpen: !current.codexOpen,
+        }));
         return;
       }
 
@@ -1092,15 +1357,16 @@ function App() {
     <main className="app-shell">
       <section className="intro-card">
         <p className="eyebrow">Proto fantasy</p>
-        <h1>Marchand, route sud, affrontements et evolutions</h1>
+        <h1>Monde etendu, codex et sanctuaire</h1>
         <p className="description">
-          Le marchand est en place, la route du sud fourmille de creatures, et 10 lignées peuvent
-          maintenant entrer en ascension avec un design evolue bien distinct.
+          Le village sert maintenant de vrai carrefour: quatre routes, un sanctuaire de soin au nord,
+          un codex des echos, et des duels avec affinites de types pour donner un peu de mordant.
         </p>
         <div className="tips">
           <span>Deplacement: fleches, ZQSD ou WASD</span>
           <span>Action: E pour pecher, vendre ou engager une creature</span>
           <span>Duel: 1 Frappe, 2 Sceau, 3 Repli</span>
+          <span>Codex: C pour ouvrir ou fermer</span>
           <span>Carte actuelle: {map.name}</span>
         </div>
       </section>
@@ -1167,6 +1433,17 @@ function App() {
             Total: {game.capturedCreatures.length} creatures, dont {shinyCount} shiny
           </p>
         </div>
+
+        <div className="hud-block">
+          <p className="hud-label">Codex</p>
+          <p className="hud-value">
+            {game.seenSpecies.length} apercues, {game.capturedCreatures.length} liees
+          </p>
+          <p className="hud-stat">
+            Zones ouvertes: village, sud, nord, est, ouest
+          </p>
+          <p className="hud-stat">Astuce: les zones changent vraiment les rencontres.</p>
+        </div>
       </section>
     </main>
   );
@@ -1197,6 +1474,9 @@ async function buildAssets(): Promise<LoadedAssets> {
       outside,
       inside,
       south,
+      north: createNorthMapCanvas(),
+      east: createEastMapCanvas(),
+      west: createWestMapCanvas(),
     },
     playerIdleSheet,
     playerWalkSheet,
@@ -1210,6 +1490,71 @@ async function buildAssets(): Promise<LoadedAssets> {
       ]),
     ) as Record<CreatureSpeciesId, CreatureAsset>,
   };
+}
+
+function createNorthMapCanvas() {
+  const canvas = createBaseMapCanvas('#d9f0d1', '#7eb47a');
+  const context = canvas.getContext('2d');
+  if (!context) return canvas;
+  drawRockPatch(context, 0, 0, 220, 170, '#819780');
+  drawRockPatch(context, 732, 24, 228, 178, '#718a73');
+  drawPath(context, [
+    [480, 620],
+    [500, 540],
+    [480, 470],
+    [520, 390],
+    [492, 302],
+    [520, 176],
+  ], '#d2c19a', 54);
+  drawShrubCluster(context, 256, 420, '#78a55e');
+  drawShrubCluster(context, 612, 388, '#6d9d63');
+  drawShrubCluster(context, 780, 470, '#88b26a');
+  drawWaterPool(context, 470, 120, 98, 54, '#8fd8f5');
+  return canvas;
+}
+
+function createEastMapCanvas() {
+  const canvas = createBaseMapCanvas('#ecddb6', '#6ab7ca');
+  const context = canvas.getContext('2d');
+  if (!context) return canvas;
+  context.fillStyle = '#7ad0e1';
+  context.fillRect(744, 0, 216, CANVAS_HEIGHT);
+  for (let index = 0; index < 14; index += 1) {
+    drawWave(context, 768 + index * 12, 70 + index * 36);
+  }
+  drawPath(context, [
+    [42, 324],
+    [182, 334],
+    [302, 304],
+    [438, 326],
+    [608, 352],
+    [726, 328],
+  ], '#dbc78f', 48);
+  drawPalm(context, 350, 210);
+  drawPalm(context, 610, 258);
+  drawPalm(context, 440, 500);
+  drawPalm(context, 226, 514);
+  return canvas;
+}
+
+function createWestMapCanvas() {
+  const canvas = createBaseMapCanvas('#cbe1b5', '#4d7247');
+  const context = canvas.getContext('2d');
+  if (!context) return canvas;
+  drawPath(context, [
+    [918, 318],
+    [758, 328],
+    [620, 284],
+    [430, 316],
+    [270, 352],
+    [110, 316],
+  ], '#b89f72', 52);
+  drawTreeMass(context, 148, 156, '#466d44');
+  drawTreeMass(context, 466, 118, '#3f683f');
+  drawTreeMass(context, 768, 164, '#4c784d');
+  drawTreeMass(context, 306, 470, '#537f4f');
+  drawTreeMass(context, 636, 446, '#456a43');
+  return canvas;
 }
 
 function createTemplateAsset(source: HTMLImageElement): CreatureAsset {
@@ -1249,12 +1594,20 @@ function renderScene(context: CanvasRenderingContext2D, assets: LoadedAssets, ga
 
   const drawStack: Array<{ y: number; draw: () => void }> = [];
   const merchant = map.merchant;
+  const sanctuary = map.sanctuary;
   const creatures = game.creaturesByMap[game.mapId];
 
   if (merchant) {
     drawStack.push({
       y: merchant.y,
       draw: () => drawMerchant(context, assets, merchant),
+    });
+  }
+
+  if (sanctuary) {
+    drawStack.push({
+      y: sanctuary.y,
+      draw: () => drawSanctuary(context, sanctuary),
     });
   }
 
@@ -1278,6 +1631,7 @@ function renderScene(context: CanvasRenderingContext2D, assets: LoadedAssets, ga
   drawFishingOverlay(context, game);
   drawCanvasHint(context, game);
   drawBattleOverlay(context, assets, game);
+  drawCodexOverlay(context, game);
 }
 
 function drawMapLabel(context: CanvasRenderingContext2D, label: string) {
@@ -1325,6 +1679,30 @@ function drawMerchant(context: CanvasRenderingContext2D, assets: LoadedAssets, m
   context.fillStyle = '#fbf6de';
   context.font = '600 15px Georgia';
   context.fillText(merchant.label, merchant.x - 34, merchant.y - 74);
+}
+
+function drawSanctuary(context: CanvasRenderingContext2D, sanctuary: Sanctuary) {
+  const pulse = 1 + Math.sin(performance.now() / 260) * 0.08;
+  drawShadow(context, sanctuary.x, sanctuary.y, 16, 7, 0.16);
+  context.save();
+  context.fillStyle = 'rgba(198, 243, 255, 0.95)';
+  context.beginPath();
+  context.arc(sanctuary.x, sanctuary.y - 34, 22 * pulse, 0, Math.PI * 2);
+  context.fill();
+  context.strokeStyle = 'rgba(248, 255, 255, 0.92)';
+  context.lineWidth = 3;
+  context.beginPath();
+  context.arc(sanctuary.x, sanctuary.y - 34, 30 * pulse, 0, Math.PI * 2);
+  context.stroke();
+  context.fillStyle = 'rgba(88, 144, 168, 0.9)';
+  context.fillRect(sanctuary.x - 8, sanctuary.y - 18, 16, 36);
+  context.restore();
+
+  context.fillStyle = 'rgba(27, 45, 58, 0.82)';
+  context.fillRect(sanctuary.x - 60, sanctuary.y - 92, 120, 24);
+  context.fillStyle = '#f1fbff';
+  context.font = '600 14px Georgia';
+  context.fillText(sanctuary.label, sanctuary.x - 42, sanctuary.y - 75);
 }
 
 function drawCreature(context: CanvasRenderingContext2D, assets: LoadedAssets, creature: CreatureInstance) {
@@ -1515,6 +1893,46 @@ function drawBattleOverlay(context: CanvasRenderingContext2D, assets: LoadedAsse
   context.restore();
 }
 
+function drawCodexOverlay(context: CanvasRenderingContext2D, game: GameState) {
+  if (!game.codexOpen) return;
+
+  const visibleEntries = Object.values(CREATURE_SPECIES)
+    .filter((species) => game.seenSpecies.includes(species.id))
+    .slice(0, 12);
+
+  context.save();
+  context.fillStyle = 'rgba(8, 16, 14, 0.68)';
+  context.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+  context.fillStyle = 'rgba(247, 244, 228, 0.97)';
+  context.fillRect(88, 62, CANVAS_WIDTH - 176, CANVAS_HEIGHT - 124);
+  context.strokeStyle = 'rgba(65, 92, 72, 0.6)';
+  context.lineWidth = 3;
+  context.strokeRect(88, 62, CANVAS_WIDTH - 176, CANVAS_HEIGHT - 124);
+  context.fillStyle = '#243c2e';
+  context.font = '700 28px Georgia';
+  context.fillText('Codex des echos', 120, 106);
+  context.font = '600 17px Georgia';
+  context.fillText(`${game.seenSpecies.length} apercues | ${game.capturedCreatures.length} liees | touche C pour fermer`, 120, 134);
+
+  let row = 0;
+  for (const species of visibleEntries) {
+    const capturedCount = game.capturedCreatures.filter((creature) => creature.speciesId === species.id).length;
+    const x = row < 6 ? 122 : 456;
+    const y = 182 + (row % 6) * 58;
+    context.fillStyle = 'rgba(232, 240, 226, 0.92)';
+    context.fillRect(x, y, 286, 42);
+    context.fillStyle = '#29422d';
+    context.font = '700 16px Georgia';
+    context.fillText(species.name, x + 12, y + 18);
+    context.font = '500 13px Georgia';
+    context.fillText(`${species.types.join('/')} | ${species.rarity}`, x + 12, y + 35);
+    context.fillText(capturedCount > 0 ? `Lies: ${capturedCount}` : 'Seulement apercue', x + 196, y + 35);
+    row += 1;
+  }
+
+  context.restore();
+}
+
 function drawBattleCreatureCard(
   context: CanvasRenderingContext2D,
   label: string,
@@ -1660,66 +2078,67 @@ function advancePlayerMovement(
 }
 
 function advanceCreatures(current: GameState, timestamp: number): GameState {
-  const mapCreatures = current.creaturesByMap.south;
-  if (mapCreatures.length === 0) return current;
-
   let changed = false;
-  const updated = mapCreatures.map((creature) => {
-    if (creature.moving) {
-      const progress = Math.min((timestamp - creature.moveStartedAt) / CREATURE_STEP_MS, 1);
-      if (progress < 1) {
+  const nextByMap = Object.fromEntries(
+    Object.entries(current.creaturesByMap).map(([mapId, creatures]) => {
+      const typedMapId = mapId as MapId;
+      const updatedCreatures = creatures.map((creature) => {
+        if (creature.moving) {
+          const progress = Math.min((timestamp - creature.moveStartedAt) / CREATURE_STEP_MS, 1);
+          if (progress < 1) {
+            changed = true;
+            return {
+              ...creature,
+              x: lerp(creature.startX, creature.targetX, progress),
+              y: lerp(creature.startY, creature.targetY, progress),
+            };
+          }
+
+          changed = true;
+          return {
+            ...creature,
+            x: creature.targetX,
+            y: creature.targetY,
+            startX: creature.targetX,
+            startY: creature.targetY,
+            moving: false,
+            lastDecisionAt: timestamp,
+          };
+        }
+
+        if (timestamp - creature.lastDecisionAt < 900 + (creature.id % 3) * 220) {
+          return creature;
+        }
+
+        const choices: Array<MoveIntent | null> = [
+          { dx: 0, dy: -1, facing: 'up' },
+          { dx: 0, dy: 1, facing: 'down' },
+          { dx: -1, dy: 0, facing: 'left' },
+          { dx: 1, dy: 0, facing: 'right' },
+          null,
+        ];
+        const choice = choices[Math.floor(Math.random() * choices.length)];
+        if (!choice) {
+          changed = true;
+          return {
+            ...creature,
+            lastDecisionAt: timestamp,
+          };
+        }
+
         changed = true;
-        return {
-          ...creature,
-          x: lerp(creature.startX, creature.targetX, progress),
-          y: lerp(creature.startY, creature.targetY, progress),
-        };
-      }
+        return attemptCreatureMove(creature, choice, timestamp, MAPS[typedMapId].colliders);
+      });
 
-      changed = true;
-      return {
-        ...creature,
-        x: creature.targetX,
-        y: creature.targetY,
-        startX: creature.targetX,
-        startY: creature.targetY,
-        moving: false,
-        lastDecisionAt: timestamp,
-      };
-    }
-
-    if (timestamp - creature.lastDecisionAt < 900 + (creature.id % 3) * 220) {
-      return creature;
-    }
-
-    const choices: Array<MoveIntent | null> = [
-      { dx: 0, dy: -1, facing: 'up' },
-      { dx: 0, dy: 1, facing: 'down' },
-      { dx: -1, dy: 0, facing: 'left' },
-      { dx: 1, dy: 0, facing: 'right' },
-      null,
-    ];
-    const choice = choices[Math.floor(Math.random() * choices.length)];
-    if (!choice) {
-      changed = true;
-      return {
-        ...creature,
-        lastDecisionAt: timestamp,
-      };
-    }
-
-    changed = true;
-    return attemptCreatureMove(creature, choice, timestamp, MAPS.south.colliders);
-  });
+      return [typedMapId, updatedCreatures];
+    }),
+  ) as CreaturesByMap;
 
   if (!changed) return current;
 
   return {
     ...current,
-    creaturesByMap: {
-      ...current.creaturesByMap,
-      south: updated,
-    },
+    creaturesByMap: nextByMap,
   };
 }
 
@@ -1793,23 +2212,40 @@ function applyTrigger(current: GameState, timestamp: number): GameState {
     },
     fishing: { phase: 'idle' },
     notice: {
-      text:
-        trigger.kind === 'door'
-          ? trigger.targetMap === 'inside'
-            ? 'Tu entres dans la maison.'
-            : 'Retour dehors.'
-          : trigger.targetMap === 'south'
-            ? 'Tu descends vers la route sauvage.'
-            : 'Retour au village.',
+      text: getTriggerNotice(trigger),
       tone: 'info',
       expiresAt: timestamp + 1800,
     },
   };
 }
 
+function getTriggerNotice(trigger: MapTrigger) {
+  if (trigger.kind === 'door') {
+    return trigger.targetMap === 'inside' ? 'Tu entres dans la maison.' : 'Retour dehors.';
+  }
+
+  switch (trigger.targetMap) {
+    case 'south':
+      return 'Tu descends vers la route sauvage.';
+    case 'north':
+      return 'Tu grimpes vers la crete nord.';
+    case 'east':
+      return 'Tu longes la cote de nacre.';
+    case 'west':
+      return 'Tu t enfonces dans les bois.';
+    default:
+      return 'Retour au village.';
+  }
+}
+
 function handlePrimaryAction(current: GameState, timestamp: number): GameState {
   if (current.player.moving) return current;
   if (current.battle.phase !== 'idle') return current;
+
+  const sanctuary = findNearbySanctuary(MAPS[current.mapId], current.player);
+  if (sanctuary) {
+    return restoreCapturedCreatures(current, sanctuary, timestamp);
+  }
 
   const merchant = findNearbyMerchant(MAPS[current.mapId], current.player);
   if (merchant) {
@@ -1877,6 +2313,28 @@ function sellFishInventory(current: GameState, merchant: Merchant, timestamp: nu
   };
 }
 
+function restoreCapturedCreatures(current: GameState, sanctuary: Sanctuary, timestamp: number): GameState {
+  if (current.capturedCreatures.length === 0) {
+    return {
+      ...current,
+      notice: {
+        text: `${sanctuary.label}: commence par te lier a une creature.`,
+        tone: 'info',
+        expiresAt: timestamp + 1800,
+      },
+    };
+  }
+
+  return {
+    ...current,
+    notice: {
+      text: `${sanctuary.label}: toute ton equipe retrouve sa vigueur. Propre, net, sans facture.`,
+      tone: 'success',
+      expiresAt: timestamp + 2200,
+    },
+  };
+}
+
 function startBattle(current: GameState, creature: CreatureInstance, timestamp: number): GameState {
   const ally = current.capturedCreatures[0];
   if (!ally) {
@@ -1892,6 +2350,7 @@ function startBattle(current: GameState, creature: CreatureInstance, timestamp: 
 
   return {
     ...current,
+    seenSpecies: addSeenSpecies(current.seenSpecies, creature.speciesId),
     battle: {
       phase: 'active',
       wild: creature,
@@ -1928,8 +2387,10 @@ function resolveBattleAction(current: GameState, action: BattleAction, timestamp
   if (current.battle.phase === 'idle') return current;
   const battle = current.battle;
   const wildSpecies = CREATURE_SPECIES[battle.wild.speciesId];
-  const allyPower = computePower(battle.ally);
-  const wildPower = computePower(battle.wild);
+  const allyPower = computeBattleDamage(battle.ally, battle.wild);
+  const wildPower = computeBattleDamage(battle.wild, battle.ally);
+  const allyEffect = describeEffectiveness(battle.ally, battle.wild);
+  const wildEffect = describeEffectiveness(battle.wild, battle.ally);
 
   if (action === 'repli') {
     if (Math.random() < 0.82) {
@@ -1948,6 +2409,7 @@ function resolveBattleAction(current: GameState, action: BattleAction, timestamp
       current,
       `Le repli rate. ${wildSpecies.name} te lit comme un livre ouvert.`,
       wildPower,
+      wildEffect,
       timestamp,
     );
   }
@@ -1962,22 +2424,26 @@ function resolveBattleAction(current: GameState, action: BattleAction, timestamp
       current,
       `Le sceau craque. ${wildSpecies.name} refuse encore le lien.`,
       wildPower,
+      wildEffect,
       timestamp,
     );
   }
 
   const nextWildVigor = Math.max(0, battle.wildVigor - allyPower);
   if (nextWildVigor <= 0) {
-    const replacement = createEncounter(battle.wild.slotId, battle.wild.roamBounds);
+    const replacement = createEncounter(battle.wild.mapId, battle.wild.slotId, battle.wild.roamBounds);
     const ascension = grantVictoryToLeader(current.capturedCreatures, battle.ally.id);
     return {
       ...current,
       creaturesByMap: {
         ...current.creaturesByMap,
-        south: current.creaturesByMap.south.map((entry) => (entry.id === battle.wild.id ? replacement : entry)),
+        [battle.wild.mapId]: current.creaturesByMap[battle.wild.mapId].map((entry) =>
+          entry.id === battle.wild.id ? replacement : entry,
+        ),
       },
       capturedCreatures: ascension.creatures,
       battle: { phase: 'idle' },
+      seenSpecies: addSeenSpecies(current.seenSpecies, replacement.speciesId),
       notice: {
         text: `${battle.ally.speciesName} remporte le duel. ${wildSpecies.name} s eparpille dans les fourres.${ascension.notice ? ` ${ascension.notice}` : ''}`,
         tone: 'success',
@@ -1986,22 +2452,29 @@ function resolveBattleAction(current: GameState, action: BattleAction, timestamp
     };
   }
 
-  return applyWildCounter(
+    return applyWildCounter(
     {
       ...current,
       battle: {
         ...battle,
         wildVigor: nextWildVigor,
-        log: `${battle.ally.speciesName} frappe. ${wildSpecies.name} vacille.`,
+        log: `${battle.ally.speciesName} frappe. ${wildSpecies.name} vacille.${allyEffect}`,
       },
     },
-    `${battle.ally.speciesName} frappe. ${wildSpecies.name} reste debout.`,
+    `${battle.ally.speciesName} frappe. ${wildSpecies.name} reste debout.${allyEffect}`,
     wildPower,
+    wildEffect,
     timestamp,
   );
 }
 
-function applyWildCounter(current: GameState, introLog: string, damage: number, timestamp: number): GameState {
+function applyWildCounter(
+  current: GameState,
+  introLog: string,
+  damage: number,
+  effectNote: string,
+  timestamp: number,
+): GameState {
   if (current.battle.phase === 'idle') return current;
   const battle = current.battle;
   const nextAllyVigor = Math.max(0, battle.allyVigor - damage);
@@ -2019,14 +2492,14 @@ function applyWildCounter(current: GameState, introLog: string, damage: number, 
     };
   }
 
-  return {
-    ...current,
-    battle: {
-      ...battle,
-      allyVigor: nextAllyVigor,
-      log: `${introLog} ${wildSpecies.name} contre-attaque pour ${damage} vigueur.`,
-    },
-  };
+    return {
+      ...current,
+      battle: {
+        ...battle,
+        allyVigor: nextAllyVigor,
+        log: `${introLog} ${wildSpecies.name} contre-attaque pour ${damage} vigueur.${effectNote}`,
+      },
+    };
 }
 
 function captureCreature(current: GameState, creature: CreatureInstance, timestamp: number, prefix?: string): GameState {
@@ -2041,22 +2514,27 @@ function captureCreature(current: GameState, creature: CreatureInstance, timesta
     iv: creature.iv,
     victories: 0,
   };
-  const replacement = createEncounter(creature.slotId, creature.roamBounds);
+  const replacement = createEncounter(creature.mapId, creature.slotId, creature.roamBounds);
 
   return {
     ...current,
     creaturesByMap: {
       ...current.creaturesByMap,
-      south: current.creaturesByMap.south.map((entry) => (entry.id === creature.id ? replacement : entry)),
+      [creature.mapId]: current.creaturesByMap[creature.mapId].map((entry) => (entry.id === creature.id ? replacement : entry)),
     },
     capturedCreatures: [captured, ...ascension.creatures].slice(0, 30),
     battle: { phase: 'idle' },
+    seenSpecies: addSeenSpecies(addSeenSpecies(current.seenSpecies, creature.speciesId), replacement.speciesId),
     notice: {
       text: `${prefix ? `${prefix} ` : ''}${creature.shiny ? 'Shiny ' : ''}${species.name} capture${creature.shiny ? 'e' : ''}: ${species.types.join('/')} ${creature.iv}% IV, rarete ${species.rarity.toLowerCase()}.${ascension.notice ? ` ${ascension.notice}` : ''}`,
       tone: 'success',
       expiresAt: timestamp + 2600,
     },
   };
+}
+
+function addSeenSpecies(seenSpecies: CreatureSpeciesId[], speciesId: CreatureSpeciesId) {
+  return seenSpecies.includes(speciesId) ? seenSpecies : [...seenSpecies, speciesId];
 }
 
 function startFishing(current: GameState, spot: FishingSpot, timestamp: number): GameState {
@@ -2493,6 +2971,91 @@ function fillRune(context: CanvasRenderingContext2D, x: number, y: number, color
   context.stroke();
 }
 
+function createBaseMapCanvas(ground: string, accent: string) {
+  const canvas = document.createElement('canvas');
+  canvas.width = CANVAS_WIDTH;
+  canvas.height = CANVAS_HEIGHT;
+  const context = canvas.getContext('2d');
+  if (!context) return canvas;
+
+  const gradient = context.createLinearGradient(0, 0, 0, CANVAS_HEIGHT);
+  gradient.addColorStop(0, ground);
+  gradient.addColorStop(1, accent);
+  context.fillStyle = gradient;
+  context.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+  return canvas;
+}
+
+function drawPath(context: CanvasRenderingContext2D, points: Array<[number, number]>, color: string, width: number) {
+  context.strokeStyle = color;
+  context.lineWidth = width;
+  context.lineCap = 'round';
+  context.lineJoin = 'round';
+  context.beginPath();
+  points.forEach(([x, y], index) => {
+    if (index === 0) {
+      context.moveTo(x, y);
+    } else {
+      context.lineTo(x, y);
+    }
+  });
+  context.stroke();
+}
+
+function drawRockPatch(context: CanvasRenderingContext2D, x: number, y: number, width: number, height: number, color: string) {
+  context.fillStyle = color;
+  context.fillRect(x, y, width, height);
+  context.fillStyle = 'rgba(255,255,255,0.12)';
+  context.fillRect(x + 18, y + 16, width - 36, 18);
+}
+
+function drawShrubCluster(context: CanvasRenderingContext2D, x: number, y: number, color: string) {
+  context.fillStyle = color;
+  for (const [dx, dy, radius] of [
+    [0, 0, 28],
+    [28, 16, 22],
+    [-24, 18, 20],
+    [14, -18, 18],
+  ] as const) {
+    context.beginPath();
+    context.arc(x + dx, y + dy, radius, 0, Math.PI * 2);
+    context.fill();
+  }
+}
+
+function drawWaterPool(context: CanvasRenderingContext2D, x: number, y: number, width: number, height: number, color: string) {
+  context.fillStyle = color;
+  context.beginPath();
+  context.ellipse(x, y, width, height, 0, 0, Math.PI * 2);
+  context.fill();
+}
+
+function drawWave(context: CanvasRenderingContext2D, x: number, y: number) {
+  context.strokeStyle = 'rgba(255,255,255,0.52)';
+  context.lineWidth = 2;
+  context.beginPath();
+  context.arc(x, y, 18, Math.PI * 0.2, Math.PI * 0.9);
+  context.stroke();
+}
+
+function drawPalm(context: CanvasRenderingContext2D, x: number, y: number) {
+  context.strokeStyle = '#7e5732';
+  context.lineWidth = 8;
+  context.beginPath();
+  context.moveTo(x, y);
+  context.lineTo(x + 4, y - 42);
+  context.stroke();
+  for (const angle of [-1.1, -0.5, 0, 0.5, 1.1] as const) {
+    fillLeaf(context, x + 4 + angle * 12, y - 44, 10, 28, '#3f9b63', angle);
+  }
+}
+
+function drawTreeMass(context: CanvasRenderingContext2D, x: number, y: number, color: string) {
+  context.fillStyle = '#704d2e';
+  context.fillRect(x - 10, y + 18, 20, 46);
+  drawShrubCluster(context, x, y, color);
+}
+
 function loadImage(src: string) {
   return new Promise<HTMLImageElement>((resolve, reject) => {
     const image = new Image();
@@ -2551,6 +3114,13 @@ function findNearbyMerchant(map: MapDefinition, player: PlayerState) {
     : null;
 }
 
+function findNearbySanctuary(map: MapDefinition, player: PlayerState) {
+  if (!map.sanctuary) return null;
+  return Math.hypot(player.x - map.sanctuary.x, player.y - map.sanctuary.y) <= map.sanctuary.radius
+    ? map.sanctuary
+    : null;
+}
+
 function findNearbyCreature(game: GameState) {
   const creatures = game.creaturesByMap[game.mapId];
   if (creatures.length === 0) return null;
@@ -2578,6 +3148,11 @@ function getActionHint(game: GameState) {
   }
 
   const map = MAPS[game.mapId];
+  const sanctuary = findNearbySanctuary(map, game.player);
+  if (sanctuary) {
+    return `E pour te ressourcer a ${sanctuary.label.toLowerCase()}`;
+  }
+
   const merchant = findNearbyMerchant(map, game.player);
   if (merchant) {
     return 'E pour vendre le poisson au marchand';
@@ -2599,8 +3174,11 @@ function getActionHint(game: GameState) {
     return trigger.label;
   }
 
-  if (game.mapId === 'outside') return 'Maison, marchand, lac, route du sud: tout est la.';
-  if (game.mapId === 'south') return 'Explore les herbes hautes et colle les creatures au corps a corps.';
+  if (game.mapId === 'outside') return 'Nord, est, ouest, sud: le village est enfin un vrai hub.';
+  if (game.mapId === 'south') return 'Route sud: terrain ideal pour les duels et les evolutions.';
+  if (game.mapId === 'north') return 'Crete nord: sanctuaire de soin et creatures plus mystiques.';
+  if (game.mapId === 'east') return 'Cote est: poissons, embruns et rencontres plus aquatiques.';
+  if (game.mapId === 'west') return 'Bois ouest: plus dense, plus rude, plus rocheux.';
   return 'Petite pause au calme avant de ressortir.';
 }
 
@@ -2675,6 +3253,57 @@ function computePower(target: CapturedCreature | CreatureInstance) {
             : 0;
   const stageBonus = species.evolutionStage === 2 ? 4 : 0;
   return 8 + Math.round(target.iv * 0.12) + rarityBonus + stageBonus;
+}
+
+function computeBattleDamage(attacker: CapturedCreature | CreatureInstance, defender: CapturedCreature | CreatureInstance) {
+  const basePower = computePower(attacker);
+  const multiplier = getTypeMultiplier(attacker, defender);
+  return Math.max(5, Math.round(basePower * multiplier));
+}
+
+function describeEffectiveness(attacker: CapturedCreature | CreatureInstance, defender: CapturedCreature | CreatureInstance) {
+  const multiplier = getTypeMultiplier(attacker, defender);
+  if (multiplier >= 1.35) return ' C est tres efficace.';
+  if (multiplier <= 0.8) return ' L impact est amorti.';
+  return '';
+}
+
+function getTypeMultiplier(attacker: CapturedCreature | CreatureInstance, defender: CapturedCreature | CreatureInstance) {
+  const attackerTypes = CREATURE_SPECIES[attacker.speciesId].types;
+  const defenderTypes = CREATURE_SPECIES[defender.speciesId].types;
+  let multiplier = 1;
+
+  for (const attackType of attackerTypes) {
+    for (const defenseType of defenderTypes) {
+      multiplier *= getSingleTypeModifier(attackType, defenseType);
+    }
+  }
+
+  return clamp(multiplier, 0.65, 1.6);
+}
+
+function getSingleTypeModifier(attackType: string, defenseType: string) {
+  const chart: Record<string, Record<string, number>> = {
+    Feu: { Plante: 1.25, Glace: 1.2, Eau: 0.8, Roche: 0.85 },
+    Eau: { Feu: 1.25, Roche: 1.2, Plante: 0.8, Electrik: 0.9 },
+    Plante: { Eau: 1.25, Roche: 1.2, Feu: 0.8, Vol: 0.85 },
+    Electrik: { Eau: 1.25, Vol: 1.2, Sol: 0.75, Plante: 0.85 },
+    Roche: { Feu: 1.2, Vol: 1.2, Eau: 0.85, Acier: 0.9 },
+    Vol: { Plante: 1.2, Insecte: 1.2, Electrik: 0.85, Roche: 0.85 },
+    Spectre: { Psy: 1.25, Lumiere: 0.78 },
+    Lumiere: { Spectre: 1.25, Tenebres: 1.15 },
+    Tenebres: { Psy: 1.2, Lumiere: 0.82, Fee: 0.85 },
+    Fee: { Tenebres: 1.2, Dragon: 1.25, Acier: 0.85 },
+    Dragon: { Dragon: 1.25, Fee: 0.8 },
+    Acier: { Roche: 1.2, Fee: 1.15, Feu: 0.85 },
+    Glace: { Plante: 1.2, Dragon: 1.2, Feu: 0.82 },
+    Sol: { Electrik: 1.25, Feu: 1.1, Vol: 0.8 },
+    Psy: { Poison: 1.2, Tenebres: 0.85 },
+    Poison: { Fee: 1.2, Plante: 1.1, Roche: 0.85 },
+    Insecte: { Plante: 1.1, Psy: 1.2, Feu: 0.82 },
+  };
+
+  return chart[attackType]?.[defenseType] ?? 1;
 }
 
 function computeSealChance(wildVigor: number, wildMaxVigor: number, creature: CreatureInstance) {
@@ -2754,14 +3383,15 @@ function randomIv() {
   return Math.floor(Math.random() * 101);
 }
 
-function createEncounter(slotId: number, roamBounds: Rect): CreatureInstance {
-  const species = rollEncounterSpecies();
+function createEncounter(mapId: MapId, slotId: number, roamBounds: Rect): CreatureInstance {
+  const species = rollEncounterSpecies(mapId);
   const x = roamBounds.x + roamBounds.width / 2;
   const y = roamBounds.y + roamBounds.height / 2;
 
   return {
     id: Date.now() + slotId * 100 + Math.floor(Math.random() * 100),
     slotId,
+    mapId,
     speciesId: species.id,
     x,
     y,
@@ -2779,8 +3409,9 @@ function createEncounter(slotId: number, roamBounds: Rect): CreatureInstance {
   };
 }
 
-function rollEncounterSpecies(): CreatureSpecies {
-  const pool = Object.values(CREATURE_SPECIES);
+function rollEncounterSpecies(mapId: MapId): CreatureSpecies {
+  const speciesPool = ENCOUNTER_POOLS[mapId];
+  const pool = speciesPool.length > 0 ? speciesPool.map((speciesId) => CREATURE_SPECIES[speciesId]) : Object.values(CREATURE_SPECIES);
   const totalWeight = pool.reduce((sum, species) => sum + species.encounterWeight, 0);
   let roll = Math.random() * totalWeight;
 
