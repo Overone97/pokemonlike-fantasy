@@ -144,6 +144,7 @@ type CreatureAsset = {
   shinySheet: HTMLCanvasElement;
   frames: FrameMap;
 };
+type BattleAction = 'frappe' | 'sceau' | 'repli';
 type CapturedCreature = {
   id: number;
   speciesId: CreatureSpeciesId;
@@ -174,6 +175,18 @@ type HudNotice = {
   tone: 'info' | 'success';
   expiresAt: number;
 };
+type BattleState =
+  | { phase: 'idle' }
+  | {
+      phase: 'active';
+      wild: CreatureInstance;
+      ally: CapturedCreature;
+      allyVigor: number;
+      allyMaxVigor: number;
+      wildVigor: number;
+      wildMaxVigor: number;
+      log: string;
+    };
 type LoadedAssets = {
   maps: Record<MapId, HTMLImageElement>;
   playerIdleSheet: HTMLCanvasElement;
@@ -192,6 +205,7 @@ type GameState = {
   capturedCreatures: CapturedCreature[];
   creaturesByMap: CreaturesByMap;
   gold: number;
+  battle: BattleState;
   notice: HudNotice | null;
 };
 
@@ -658,18 +672,20 @@ function createSouthCreatures(): CreatureInstance[] {
 }
 
 function createInitialGameState(): GameState {
+  const starter = createStarterCreature();
   return {
     mapId: 'outside',
     player: createPlayerForMap('outside'),
     fishing: { phase: 'idle' },
     fishInventory: [],
-    capturedCreatures: [],
+    capturedCreatures: [starter],
     creaturesByMap: {
       outside: [],
       inside: [],
       south: createSouthCreatures(),
     },
     gold: 0,
+    battle: { phase: 'idle' },
     notice: null,
   };
 }
@@ -705,6 +721,12 @@ function App() {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const key = event.key.toLowerCase();
+      if (key === '1' || key === '2' || key === '3') {
+        event.preventDefault();
+        setGame((current) => handleBattleInput(current, key, performance.now()));
+        return;
+      }
+
       const input = INPUTS[key];
       if (input) {
         event.preventDefault();
@@ -712,6 +734,9 @@ function App() {
         bufferedDirectionRef.current = input.facing;
 
         setGame((current) => {
+          if (current.battle.phase !== 'idle') {
+            return current;
+          }
           if (current.fishing.phase !== 'idle') {
             return {
               ...current,
@@ -802,6 +827,7 @@ function App() {
   const fishValue = getFishInventoryValue(game.fishInventory);
   const actionHint = getActionHint(game);
   const shinyCount = game.capturedCreatures.filter((creature) => creature.shiny).length;
+  const activeBinder = game.capturedCreatures[0];
 
   return (
     <main className="app-shell">
@@ -815,6 +841,7 @@ function App() {
         <div className="tips">
           <span>Deplacement: fleches, ZQSD ou WASD</span>
           <span>Action: E pour pecher, vendre ou capturer</span>
+          <span>Duel: 1 Frappe, 2 Sceau, 3 Repli</span>
           <span>Carte actuelle: {map.name}</span>
         </div>
       </section>
@@ -837,6 +864,12 @@ function App() {
               'Le shiny tombe a 1 sur 100. Donc oui, il va forcement te narguer quand tu ne regardes pas.'}
           </p>
           <p className="hud-stat">Or: {game.gold.toFixed(1)} pieces</p>
+          {activeBinder ? (
+            <p className="hud-stat">
+              Meneur: {activeBinder.shiny ? 'Shiny ' : ''}
+              {activeBinder.speciesName} {activeBinder.iv}% IV
+            </p>
+          ) : null}
         </div>
 
         <div className="hud-block">
@@ -981,6 +1014,7 @@ function renderScene(context: CanvasRenderingContext2D, assets: LoadedAssets, ga
 
   drawFishingOverlay(context, game);
   drawCanvasHint(context, game);
+  drawBattleOverlay(context, assets, game);
 }
 
 function drawMapLabel(context: CanvasRenderingContext2D, label: string) {
@@ -1151,6 +1185,93 @@ function drawCanvasHint(context: CanvasRenderingContext2D, game: GameState) {
   context.fillText(hint, 304, 47);
 }
 
+function drawBattleOverlay(context: CanvasRenderingContext2D, assets: LoadedAssets, game: GameState) {
+  if (game.battle.phase === 'idle') return;
+
+  const { ally, wild, allyVigor, allyMaxVigor, wildVigor, wildMaxVigor, log } = game.battle;
+  const allyAsset = assets.creatures[ally.speciesId];
+  const wildAsset = assets.creatures[wild.speciesId];
+  const allyFrame = allyAsset.frames.left[1];
+  const wildFrame = wildAsset.frames.right[1];
+  const allySheet = ally.shiny ? allyAsset.shinySheet : allyAsset.normalSheet;
+  const wildSheet = wild.shiny ? wildAsset.shinySheet : wildAsset.normalSheet;
+
+  context.save();
+  context.fillStyle = 'rgba(10, 18, 10, 0.58)';
+  context.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+  context.fillStyle = 'rgba(244, 236, 208, 0.96)';
+  context.fillRect(72, 78, CANVAS_WIDTH - 144, CANVAS_HEIGHT - 156);
+  context.strokeStyle = 'rgba(71, 94, 46, 0.6)';
+  context.lineWidth = 3;
+  context.strokeRect(72, 78, CANVAS_WIDTH - 144, CANVAS_HEIGHT - 156);
+
+  context.fillStyle = '#27411f';
+  context.font = '700 30px Georgia';
+  context.fillText('Affrontement sauvage', 106, 126);
+
+  drawBattleCreatureCard(context, ally.speciesName, ally.iv, allyVigor, allyMaxVigor, 114, 174, false);
+  drawBattleCreatureCard(
+    context,
+    `${wild.shiny ? 'Shiny ' : ''}${CREATURE_SPECIES[wild.speciesId].name}`,
+    wild.iv,
+    wildVigor,
+    wildMaxVigor,
+    518,
+    174,
+    true,
+  );
+
+  context.drawImage(allySheet, allyFrame.x, allyFrame.y, allyFrame.width, allyFrame.height, 132, 264, 144, 144);
+  context.drawImage(wildSheet, wildFrame.x, wildFrame.y, wildFrame.width, wildFrame.height, 636, 214, 144, 144);
+
+  context.fillStyle = '#324926';
+  context.font = '600 18px Georgia';
+  context.fillText(log, 108, 430);
+  context.fillText('1 Frappe', 108, 474);
+  context.fillText('2 Sceau', 248, 474);
+  context.fillText('3 Repli', 392, 474);
+  context.fillText('Les PV s appellent Vigueur. On garde un peu de dignite.', 108, 514);
+  context.restore();
+}
+
+function drawBattleCreatureCard(
+  context: CanvasRenderingContext2D,
+  label: string,
+  iv: number,
+  vigor: number,
+  maxVigor: number,
+  x: number,
+  y: number,
+  alignRight: boolean,
+) {
+  context.fillStyle = 'rgba(255, 249, 232, 0.96)';
+  context.fillRect(x, y, 280, 74);
+  context.strokeStyle = 'rgba(116, 137, 79, 0.42)';
+  context.strokeRect(x, y, 280, 74);
+  context.fillStyle = '#2f4824';
+  context.font = '700 20px Georgia';
+  context.fillText(label, x + 16, y + 26);
+  context.font = '600 15px Georgia';
+  context.fillText(`${iv}% IV`, alignRight ? x + 210 : x + 16, y + 48);
+  drawVigorBar(context, x + 16, y + 54, 248, vigor, maxVigor);
+}
+
+function drawVigorBar(
+  context: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  width: number,
+  value: number,
+  maxValue: number,
+) {
+  const ratio = maxValue <= 0 ? 0 : clamp01(value / maxValue);
+  context.fillStyle = 'rgba(45, 59, 34, 0.18)';
+  context.fillRect(x, y, width, 12);
+  context.fillStyle = ratio > 0.55 ? '#6eaf53' : ratio > 0.25 ? '#d7b34e' : '#d76a54';
+  context.fillRect(x, y, Math.max(0, width * ratio), 12);
+}
+
 function drawLoadingState(context: CanvasRenderingContext2D, error: string | null) {
   const gradient = context.createLinearGradient(0, 0, 0, CANVAS_HEIGHT);
   gradient.addColorStop(0, '#f7f0ce');
@@ -1178,6 +1299,10 @@ function advanceGameState(
 
   if (next.notice && next.notice.expiresAt <= timestamp) {
     next = { ...next, notice: null };
+  }
+
+  if (next.battle.phase !== 'idle') {
+    return next;
   }
 
   next = advanceFishing(next, timestamp);
@@ -1400,6 +1525,7 @@ function applyTrigger(current: GameState, timestamp: number): GameState {
 
 function handlePrimaryAction(current: GameState, timestamp: number): GameState {
   if (current.player.moving) return current;
+  if (current.battle.phase !== 'idle') return current;
 
   const merchant = findNearbyMerchant(MAPS[current.mapId], current.player);
   if (merchant) {
@@ -1419,7 +1545,7 @@ function handlePrimaryAction(current: GameState, timestamp: number): GameState {
 
   const creature = findNearbyCreature(current);
   if (creature) {
-    return captureCreature(current, creature, timestamp);
+    return startBattle(current, creature, timestamp);
   }
 
   const spot = findFishingSpot(MAPS[current.mapId], current.player);
@@ -1467,7 +1593,157 @@ function sellFishInventory(current: GameState, merchant: Merchant, timestamp: nu
   };
 }
 
-function captureCreature(current: GameState, creature: CreatureInstance, timestamp: number): GameState {
+function startBattle(current: GameState, creature: CreatureInstance, timestamp: number): GameState {
+  const ally = current.capturedCreatures[0];
+  if (!ally) {
+    return {
+      ...current,
+      notice: {
+        text: 'Il te faut au moins une creature liee pour engager un affrontement.',
+        tone: 'info',
+        expiresAt: timestamp + 2200,
+      },
+    };
+  }
+
+  return {
+    ...current,
+    battle: {
+      phase: 'active',
+      wild: creature,
+      ally,
+      allyVigor: computeVigor(ally),
+      allyMaxVigor: computeVigor(ally),
+      wildVigor: computeVigor(creature),
+      wildMaxVigor: computeVigor(creature),
+      log: `${ally.speciesName} entre en resonance avec ${CREATURE_SPECIES[creature.speciesId].name}.`,
+    },
+    notice: {
+      text: 'Affrontement lance. Utilise 1, 2 ou 3.',
+      tone: 'info',
+      expiresAt: timestamp + 1800,
+    },
+  };
+}
+
+function handleBattleInput(current: GameState, key: string, timestamp: number): GameState {
+  if (current.battle.phase === 'idle') return current;
+
+  const actionByKey: Record<string, BattleAction> = {
+    '1': 'frappe',
+    '2': 'sceau',
+    '3': 'repli',
+  };
+  const action = actionByKey[key];
+  if (!action) return current;
+
+  return resolveBattleAction(current, action, timestamp);
+}
+
+function resolveBattleAction(current: GameState, action: BattleAction, timestamp: number): GameState {
+  if (current.battle.phase === 'idle') return current;
+  const battle = current.battle;
+  const wildSpecies = CREATURE_SPECIES[battle.wild.speciesId];
+  const allyPower = computePower(battle.ally);
+  const wildPower = computePower(battle.wild);
+
+  if (action === 'repli') {
+    if (Math.random() < 0.82) {
+      return {
+        ...current,
+        battle: { phase: 'idle' },
+        notice: {
+          text: 'Repli propre. Tu coupes la resonance et tu files.',
+          tone: 'info',
+          expiresAt: timestamp + 1800,
+        },
+      };
+    }
+
+    return applyWildCounter(
+      current,
+      `Le repli rate. ${wildSpecies.name} te lit comme un livre ouvert.`,
+      wildPower,
+      timestamp,
+    );
+  }
+
+  if (action === 'sceau') {
+    const captureChance = computeSealChance(battle.wildVigor, battle.wildMaxVigor, battle.wild);
+    if (Math.random() < captureChance) {
+      return captureCreature(current, battle.wild, timestamp, `Sceau reussi sur ${wildSpecies.name}.`);
+    }
+
+    return applyWildCounter(
+      current,
+      `Le sceau craque. ${wildSpecies.name} refuse encore le lien.`,
+      wildPower,
+      timestamp,
+    );
+  }
+
+  const nextWildVigor = Math.max(0, battle.wildVigor - allyPower);
+  if (nextWildVigor <= 0) {
+    const replacement = createEncounter(battle.wild.slotId, battle.wild.roamBounds);
+    return {
+      ...current,
+      creaturesByMap: {
+        ...current.creaturesByMap,
+        south: current.creaturesByMap.south.map((entry) => (entry.id === battle.wild.id ? replacement : entry)),
+      },
+      battle: { phase: 'idle' },
+      notice: {
+        text: `${battle.ally.speciesName} remporte le duel. ${wildSpecies.name} s eparpille dans les fourres.`,
+        tone: 'success',
+        expiresAt: timestamp + 2200,
+      },
+    };
+  }
+
+  return applyWildCounter(
+    {
+      ...current,
+      battle: {
+        ...battle,
+        wildVigor: nextWildVigor,
+        log: `${battle.ally.speciesName} frappe. ${wildSpecies.name} vacille.`,
+      },
+    },
+    `${battle.ally.speciesName} frappe. ${wildSpecies.name} reste debout.`,
+    wildPower,
+    timestamp,
+  );
+}
+
+function applyWildCounter(current: GameState, introLog: string, damage: number, timestamp: number): GameState {
+  if (current.battle.phase === 'idle') return current;
+  const battle = current.battle;
+  const nextAllyVigor = Math.max(0, battle.allyVigor - damage);
+  const wildSpecies = CREATURE_SPECIES[battle.wild.speciesId];
+
+  if (nextAllyVigor <= 0) {
+    return {
+      ...current,
+      battle: { phase: 'idle' },
+      notice: {
+        text: `${introLog} ${wildSpecies.name} brise la resonance. Duel perdu.`,
+        tone: 'info',
+        expiresAt: timestamp + 2400,
+      },
+    };
+  }
+
+  return {
+    ...current,
+    battle: {
+      ...battle,
+      allyVigor: nextAllyVigor,
+      log: `${introLog} ${wildSpecies.name} contre-attaque pour ${damage} vigueur.`,
+    },
+  };
+}
+
+function captureCreature(current: GameState, creature: CreatureInstance, timestamp: number, prefix?: string): GameState {
   const species = CREATURE_SPECIES[creature.speciesId];
   const captured: CapturedCreature = {
     id: Date.now() + Math.floor(Math.random() * 1000),
@@ -1485,8 +1761,9 @@ function captureCreature(current: GameState, creature: CreatureInstance, timesta
       south: current.creaturesByMap.south.map((entry) => (entry.id === creature.id ? replacement : entry)),
     },
     capturedCreatures: [captured, ...current.capturedCreatures].slice(0, 30),
+    battle: { phase: 'idle' },
     notice: {
-      text: `${creature.shiny ? 'Shiny ' : ''}${species.name} capture${creature.shiny ? 'e' : ''}: ${species.types.join('/')} ${creature.iv}% IV, rarete ${species.rarity.toLowerCase()}.`,
+      text: `${prefix ? `${prefix} ` : ''}${creature.shiny ? 'Shiny ' : ''}${species.name} capture${creature.shiny ? 'e' : ''}: ${species.types.join('/')} ${creature.iv}% IV, rarete ${species.rarity.toLowerCase()}.`,
       tone: 'success',
       expiresAt: timestamp + 2600,
     },
@@ -1812,6 +2089,10 @@ function getPlayerBody(player: PlayerState): Rect {
 }
 
 function getActionHint(game: GameState) {
+  if (game.battle.phase !== 'idle') {
+    return 'Duel: 1 Frappe, 2 Sceau, 3 Repli';
+  }
+
   if (game.fishing.phase !== 'idle') {
     return 'Peche en cours...';
   }
@@ -1841,6 +2122,53 @@ function getActionHint(game: GameState) {
   if (game.mapId === 'outside') return 'Maison, marchand, lac, route du sud: tout est la.';
   if (game.mapId === 'south') return 'Explore les herbes hautes et colle les creatures au corps a corps.';
   return 'Petite pause au calme avant de ressortir.';
+}
+
+function createStarterCreature(): CapturedCreature {
+  return {
+    id: 1,
+    speciesId: 'brindibouh',
+    speciesName: 'Brindibouh',
+    shiny: false,
+    iv: 62,
+  };
+}
+
+function computeVigor(target: CapturedCreature | CreatureInstance) {
+  const base = 46;
+  return base + Math.round(target.iv * 0.42);
+}
+
+function computePower(target: CapturedCreature | CreatureInstance) {
+  const species = CREATURE_SPECIES[target.speciesId];
+  const rarityBonus =
+    species.rarity === 'Legendaire'
+      ? 7
+      : species.rarity === 'Epique'
+        ? 5
+        : species.rarity === 'Rare'
+          ? 3
+          : species.rarity === 'Peu commune'
+            ? 2
+            : 0;
+  return 8 + Math.round(target.iv * 0.12) + rarityBonus;
+}
+
+function computeSealChance(wildVigor: number, wildMaxVigor: number, creature: CreatureInstance) {
+  const species = CREATURE_SPECIES[creature.speciesId];
+  const hpRatio = wildMaxVigor <= 0 ? 1 : wildVigor / wildMaxVigor;
+  const rarityPenalty =
+    species.rarity === 'Legendaire'
+      ? 0.26
+      : species.rarity === 'Epique'
+        ? 0.18
+        : species.rarity === 'Rare'
+          ? 0.1
+          : species.rarity === 'Peu commune'
+            ? 0.04
+            : 0;
+  const shinyPenalty = creature.shiny ? 0.08 : 0;
+  return clamp01(0.18 + (1 - hpRatio) * 0.62 - rarityPenalty - shinyPenalty);
 }
 
 function rollFish(): CaughtFish {
