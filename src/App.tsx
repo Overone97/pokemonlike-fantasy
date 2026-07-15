@@ -6,6 +6,7 @@ const SOUTH_MAP_SRC = '/pokemonlike-fantasy/assets/generated/restart/route-south
 const NORTH_MAP_SRC = 'generated:north-ridge';
 const EAST_MAP_SRC = 'generated:east-coast';
 const WEST_MAP_SRC = 'generated:west-woods';
+const ARENA_MAP_SRC = 'generated:arena';
 const PLAYER_IDLE_SRC = '/pokemonlike-fantasy/assets/generated/restart/player-idle.png';
 const PLAYER_WALK_SRC = '/pokemonlike-fantasy/assets/generated/restart/player-walk.png';
 const BRINDIBOUH_SRC = '/pokemonlike-fantasy/assets/generated/restart/monster-brindibouh.png';
@@ -30,7 +31,7 @@ const SHINY_RATE = 0.01;
 const EVOLUTION_VICTORIES_REQUIRED = 3;
 
 type Direction = 'up' | 'down' | 'left' | 'right';
-type MapId = 'outside' | 'inside' | 'south' | 'north' | 'east' | 'west';
+type MapId = 'outside' | 'inside' | 'south' | 'north' | 'east' | 'west' | 'arena';
 type CreatureTemplateId = 'brindibouh' | 'galetout' | 'bullefroth';
 type CreatureSpeciesId =
   | 'brindibouh'
@@ -98,6 +99,12 @@ type Sanctuary = {
   radius: number;
   label: string;
 };
+type InteractionPoint = {
+  x: number;
+  y: number;
+  radius: number;
+  label: string;
+};
 type MapDefinition = {
   id: MapId;
   name: string;
@@ -110,6 +117,8 @@ type MapDefinition = {
   fishingSpots: FishingSpot[];
   merchant?: Merchant;
   sanctuary?: Sanctuary;
+  teamStation?: InteractionPoint;
+  arenaDesk?: InteractionPoint;
 };
 type PlayerState = {
   x: number;
@@ -220,14 +229,23 @@ type BattleState =
   | { phase: 'idle' }
   | {
       phase: 'active';
-      wild: CreatureInstance;
-      ally: CapturedCreature;
-      allyVigor: number;
-      allyMaxVigor: number;
-      wildVigor: number;
-      wildMaxVigor: number;
+      mode: 'wild' | 'arena';
+      title: string;
+      allyTeam: CapturedCreature[];
+      allyIndex: number;
+      allyVigors: Record<number, number>;
+      foeTeam: CapturedCreature[];
+      foeIndex: number;
+      foeVigors: Record<number, number>;
+      sourceWild?: CreatureInstance;
+      rewardGold: number;
       log: string;
     };
+type ArenaChallenger = {
+  name: string;
+  rewardGold: number;
+  team: Array<{ speciesId: CreatureSpeciesId; iv: number; shiny?: boolean }>;
+};
 type LoadedAssets = {
   maps: Record<MapId, HTMLImageElement | HTMLCanvasElement>;
   playerIdleSheet: HTMLCanvasElement;
@@ -250,6 +268,10 @@ type GameState = {
   notice: HudNotice | null;
   seenSpecies: CreatureSpeciesId[];
   codexOpen: boolean;
+  teamIds: number[];
+  teamMenuOpen: boolean;
+  selectedCreatureId: number | null;
+  arenaProgress: number;
 };
 
 const INPUTS: Record<string, MoveIntent> = {
@@ -837,7 +859,63 @@ const ENCOUNTER_POOLS: Record<MapId, CreatureSpeciesId[]> = {
     'voltlynx',
     'noctplume',
   ],
+  arena: [],
 };
+
+const ARENA_CHALLENGERS: ArenaChallenger[] = [
+  {
+    name: 'Lysa des herbes',
+    rewardGold: 24,
+    team: [
+      { speciesId: 'mousseron', iv: 42 },
+      { speciesId: 'emberet', iv: 46 },
+      { speciesId: 'bullefroth', iv: 44 },
+    ],
+  },
+  {
+    name: 'Coren des braises',
+    rewardGold: 36,
+    team: [
+      { speciesId: 'cendrours', iv: 58 },
+      { speciesId: 'galetout', iv: 52 },
+      { speciesId: 'voltlynx', iv: 55 },
+      { speciesId: 'algobulle', iv: 54 },
+    ],
+  },
+  {
+    name: 'Nacre la marieuse',
+    rewardGold: 48,
+    team: [
+      { speciesId: 'abyssobulle', iv: 62 },
+      { speciesId: 'coralythe', iv: 60 },
+      { speciesId: 'ferabec', iv: 59 },
+      { speciesId: 'cristalune', iv: 61 },
+    ],
+  },
+  {
+    name: 'Torv du rempart',
+    rewardGold: 62,
+    team: [
+      { speciesId: 'bastionyx', iv: 68 },
+      { speciesId: 'pyrogriffe', iv: 66 },
+      { speciesId: 'monolithe', iv: 70 },
+      { speciesId: 'tempestor', iv: 67 },
+      { speciesId: 'spectrik', iv: 64 },
+    ],
+  },
+  {
+    name: 'Maître Aster',
+    rewardGold: 90,
+    team: [
+      { speciesId: 'ramureine', iv: 72 },
+      { speciesId: 'volcarnage', iv: 76 },
+      { speciesId: 'fulguroc', iv: 74 },
+      { speciesId: 'dracombre', iv: 78 },
+      { speciesId: 'solenid', iv: 82, shiny: true },
+      { speciesId: 'tempestor', iv: 75 },
+    ],
+  },
+];
 
 const MAPS: Record<MapId, MapDefinition> = {
   outside: {
@@ -927,6 +1005,18 @@ const MAPS: Record<MapId, MapDefinition> = {
         label: 'Prendre la route du sud',
         kind: 'route',
       },
+      {
+        x: 632,
+        y: 572,
+        width: 104,
+        height: 44,
+        targetMap: 'arena',
+        targetX: 480,
+        targetY: 564,
+        targetFacing: 'up',
+        label: 'Entrer dans l arene des echos',
+        kind: 'door',
+      },
     ],
     fishingSpots: [
       {
@@ -1002,6 +1092,12 @@ const MAPS: Record<MapId, MapDefinition> = {
       },
     ],
     fishingSpots: [],
+    teamStation: {
+      x: 482,
+      y: 252,
+      radius: 68,
+      label: 'Table des liens',
+    },
   },
   south: {
     id: 'south',
@@ -1160,6 +1256,52 @@ const MAPS: Record<MapId, MapDefinition> = {
     ],
     fishingSpots: [],
   },
+  arena: {
+    id: 'arena',
+    name: 'Arene des echos',
+    src: ARENA_MAP_SRC,
+    spawnX: 480,
+    spawnY: 564,
+    spawnFacing: 'up',
+    colliders: [
+      { x: 0, y: 0, width: CANVAS_WIDTH, height: 36 },
+      { x: 0, y: 0, width: 74, height: CANVAS_HEIGHT },
+      { x: CANVAS_WIDTH - 74, y: 0, width: 74, height: CANVAS_HEIGHT },
+      { x: 0, y: CANVAS_HEIGHT - 28, width: 432, height: 28 },
+      { x: 528, y: CANVAS_HEIGHT - 28, width: 432, height: 28 },
+      { x: 102, y: 96, width: 202, height: 148 },
+      { x: 658, y: 96, width: 200, height: 148 },
+      { x: 268, y: 432, width: 124, height: 64 },
+      { x: 568, y: 432, width: 124, height: 64 },
+    ],
+    triggers: [
+      {
+        x: 448,
+        y: 582,
+        width: 64,
+        height: 34,
+        targetMap: 'outside',
+        targetX: 684,
+        targetY: 540,
+        targetFacing: 'down',
+        label: 'Sortir de l arene',
+        kind: 'door',
+      },
+    ],
+    fishingSpots: [],
+    arenaDesk: {
+      x: 480,
+      y: 162,
+      radius: 78,
+      label: 'Dalle du duel',
+    },
+    sanctuary: {
+      x: 480,
+      y: 478,
+      radius: 52,
+      label: 'Bassin des souffles',
+    },
+  },
 };
 
 function createPlayerForMap(mapId: MapId): PlayerState {
@@ -1196,12 +1338,17 @@ function createInitialGameState(): GameState {
       north: createCreaturesForMap('north', NORTH_SPAWN_SLOTS),
       east: createCreaturesForMap('east', EAST_SPAWN_SLOTS),
       west: createCreaturesForMap('west', WEST_SPAWN_SLOTS),
+      arena: [],
     },
     gold: 0,
     battle: { phase: 'idle' },
     notice: null,
     seenSpecies: [starter.speciesId],
     codexOpen: false,
+    teamIds: [starter.id],
+    teamMenuOpen: false,
+    selectedCreatureId: starter.id,
+    arenaProgress: 0,
   };
 }
 
@@ -1236,6 +1383,22 @@ function App() {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const key = event.key.toLowerCase();
+      if (game.teamMenuOpen) {
+        if (key === 'escape' || key === INTERACT_KEY) {
+          event.preventDefault();
+          setGame((current) => ({
+            ...current,
+            teamMenuOpen: false,
+            notice: {
+              text: 'Table des liens refermee.',
+              tone: 'info',
+              expiresAt: performance.now() + 1600,
+            },
+          }));
+        }
+        return;
+      }
+
       if (key === '1' || key === '2' || key === '3') {
         event.preventDefault();
         setGame((current) => handleBattleInput(current, key, performance.now()));
@@ -1314,7 +1477,7 @@ function App() {
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
     };
-  }, []);
+  }, [game.teamMenuOpen]);
 
   useEffect(() => {
     let frameId = 0;
@@ -1351,7 +1514,13 @@ function App() {
   const fishValue = getFishInventoryValue(game.fishInventory);
   const actionHint = getActionHint(game);
   const shinyCount = game.capturedCreatures.filter((creature) => creature.shiny).length;
-  const activeBinder = game.capturedCreatures[0];
+  const activeTeam = getActiveTeam(game);
+  const reserveTeam = getReserveCreatures(game);
+  const selectedCreature = game.selectedCreatureId
+    ? game.capturedCreatures.find((creature) => creature.id === game.selectedCreatureId) ?? null
+    : null;
+  const activeBinder = activeTeam[0] ?? null;
+  const nextArenaChallenger = ARENA_CHALLENGERS[Math.min(game.arenaProgress, ARENA_CHALLENGERS.length - 1)];
 
   return (
     <main className="app-shell">
@@ -1359,13 +1528,13 @@ function App() {
         <p className="eyebrow">Proto fantasy</p>
         <h1>Monde etendu, codex et sanctuaire</h1>
         <p className="description">
-          Le village sert maintenant de vrai carrefour: quatre routes, un sanctuaire de soin au nord,
-          un codex des echos, et des duels avec affinites de types pour donner un peu de mordant.
+          Le village sert maintenant de vrai carrefour: reserve d equipe dans la maison, arene a paliers,
+          sanctuaires, codex et vrais affrontements d equipe jusqu a six creatures.
         </p>
         <div className="tips">
           <span>Deplacement: fleches, ZQSD ou WASD</span>
-          <span>Action: E pour pecher, vendre ou engager une creature</span>
-          <span>Duel: 1 Frappe, 2 Sceau, 3 Repli</span>
+          <span>Action: E pour pecher, gerer ton equipe, lancer un duel ou defier l arene</span>
+          <span>Duel: 1 Frappe, 2 Sceau ou Focus, 3 Repli</span>
           <span>Codex: C pour ouvrir ou fermer</span>
           <span>Carte actuelle: {map.name}</span>
         </div>
@@ -1418,11 +1587,11 @@ function App() {
 
         <div className="hud-block">
           <p className="hud-label">Equipe capturee</p>
-          {game.capturedCreatures.length > 0 ? (
+          {activeTeam.length > 0 ? (
             <div className="inventory-list">
-              {game.capturedCreatures.slice(0, 6).map((creature) => (
+              {activeTeam.map((creature, index) => (
                 <span key={creature.id}>
-                  {renderCapturedLabel(creature)}
+                  #{index + 1} {renderCapturedLabel(creature)}
                 </span>
               ))}
             </div>
@@ -1430,21 +1599,93 @@ function App() {
             <p className="hud-value">Rien capture. Va fouiller la route du sud.</p>
           )}
           <p className="hud-stat">
-            Total: {game.capturedCreatures.length} creatures, dont {shinyCount} shiny
+            Actives: {activeTeam.length}/6 | Reserve: {reserveTeam.length} | Total shiny: {shinyCount}
           </p>
         </div>
 
         <div className="hud-block">
-          <p className="hud-label">Codex</p>
+          <p className="hud-label">Codex et arene</p>
           <p className="hud-value">
             {game.seenSpecies.length} apercues, {game.capturedCreatures.length} liees
           </p>
           <p className="hud-stat">
             Zones ouvertes: village, sud, nord, est, ouest
           </p>
-          <p className="hud-stat">Astuce: les zones changent vraiment les rencontres.</p>
+          <p className="hud-stat">
+            Prochain duel d arene: {nextArenaChallenger.name} | palier {Math.min(game.arenaProgress + 1, ARENA_CHALLENGERS.length)}/{ARENA_CHALLENGERS.length}
+          </p>
         </div>
       </section>
+
+      {game.teamMenuOpen ? (
+        <section className="team-panel">
+          <div className="team-panel-card">
+            <p className="eyebrow">Maison des liens</p>
+            <h2>Composer l equipe active</h2>
+            <p className="team-panel-copy">
+              Clique une creature puis choisis son role. L arene prend toujours les six premieres places actives.
+            </p>
+            <div className="team-panel-grid">
+              <div>
+                <p className="hud-label">Equipe active</p>
+                <div className="team-list">
+                  {activeTeam.map((creature, index) => (
+                    <button
+                      key={creature.id}
+                      type="button"
+                      className={`team-chip ${game.selectedCreatureId === creature.id ? 'selected' : ''}`}
+                      onClick={() => setGame((current) => selectCreature(current, creature.id))}
+                    >
+                      #{index + 1} {renderCapturedLabel(creature)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <p className="hud-label">Reserve</p>
+                <div className="team-list">
+                  {reserveTeam.length > 0 ? (
+                    reserveTeam.map((creature) => (
+                      <button
+                        key={creature.id}
+                        type="button"
+                        className={`team-chip ${game.selectedCreatureId === creature.id ? 'selected' : ''}`}
+                        onClick={() => setGame((current) => selectCreature(current, creature.id))}
+                      >
+                        {renderCapturedLabel(creature)}
+                      </button>
+                    ))
+                  ) : (
+                    <p className="hud-value">Reserve vide. Va chasser un peu.</p>
+                  )}
+                </div>
+              </div>
+            </div>
+            {selectedCreature ? (
+              <div className="team-actions">
+                <button type="button" onClick={() => setGame((current) => promoteCreatureToLeader(current, selectedCreature.id))}>
+                  Mettre meneur
+                </button>
+                <button type="button" onClick={() => setGame((current) => addCreatureToTeam(current, selectedCreature.id, performance.now()))}>
+                  Ajouter a l equipe
+                </button>
+                <button type="button" onClick={() => setGame((current) => removeCreatureFromTeam(current, selectedCreature.id, performance.now()))}>
+                  Retirer de l equipe
+                </button>
+                <button type="button" onClick={() => setGame((current) => moveCreatureInTeam(current, selectedCreature.id, -1))}>
+                  Monter
+                </button>
+                <button type="button" onClick={() => setGame((current) => moveCreatureInTeam(current, selectedCreature.id, 1))}>
+                  Descendre
+                </button>
+                <button type="button" onClick={() => setGame((current) => closeTeamMenu(current, 'Gestion d equipe bouclee.'))}>
+                  Fermer
+                </button>
+              </div>
+            ) : null}
+          </div>
+        </section>
+      ) : null}
     </main>
   );
 }
@@ -1477,6 +1718,7 @@ async function buildAssets(): Promise<LoadedAssets> {
       north: createNorthMapCanvas(),
       east: createEastMapCanvas(),
       west: createWestMapCanvas(),
+      arena: createArenaMapCanvas(),
     },
     playerIdleSheet,
     playerWalkSheet,
@@ -1557,6 +1799,37 @@ function createWestMapCanvas() {
   return canvas;
 }
 
+function createArenaMapCanvas() {
+  const canvas = createBaseMapCanvas('#e9dcc0', '#8b6b4f');
+  const context = canvas.getContext('2d');
+  if (!context) return canvas;
+  context.fillStyle = '#5f4330';
+  context.fillRect(84, 76, 792, 488);
+  context.fillStyle = '#d6bf96';
+  context.fillRect(132, 124, 696, 392);
+  context.strokeStyle = 'rgba(86, 56, 32, 0.78)';
+  context.lineWidth = 12;
+  context.strokeRect(132, 124, 696, 392);
+  drawPath(
+    context,
+    [
+      [480, 610],
+      [480, 520],
+      [480, 440],
+      [480, 358],
+      [480, 284],
+      [480, 176],
+    ],
+    '#f0e2bf',
+    42,
+  );
+  drawRockPatch(context, 136, 128, 120, 94, '#8a6d55');
+  drawRockPatch(context, 704, 128, 120, 94, '#8a6d55');
+  drawShrubCluster(context, 236, 474, '#708b52');
+  drawShrubCluster(context, 716, 474, '#708b52');
+  return canvas;
+}
+
 function createTemplateAsset(source: HTMLImageElement): CreatureAsset {
   const normalSheet = removeGreenScreen(source);
   return {
@@ -1595,6 +1868,8 @@ function renderScene(context: CanvasRenderingContext2D, assets: LoadedAssets, ga
   const drawStack: Array<{ y: number; draw: () => void }> = [];
   const merchant = map.merchant;
   const sanctuary = map.sanctuary;
+  const teamStation = map.teamStation;
+  const arenaDesk = map.arenaDesk;
   const creatures = game.creaturesByMap[game.mapId];
 
   if (merchant) {
@@ -1608,6 +1883,20 @@ function renderScene(context: CanvasRenderingContext2D, assets: LoadedAssets, ga
     drawStack.push({
       y: sanctuary.y,
       draw: () => drawSanctuary(context, sanctuary),
+    });
+  }
+
+  if (teamStation) {
+    drawStack.push({
+      y: teamStation.y,
+      draw: () => drawTeamStation(context, teamStation),
+    });
+  }
+
+  if (arenaDesk) {
+    drawStack.push({
+      y: arenaDesk.y,
+      draw: () => drawArenaDesk(context, arenaDesk),
     });
   }
 
@@ -1703,6 +1992,36 @@ function drawSanctuary(context: CanvasRenderingContext2D, sanctuary: Sanctuary) 
   context.fillStyle = '#f1fbff';
   context.font = '600 14px Georgia';
   context.fillText(sanctuary.label, sanctuary.x - 42, sanctuary.y - 75);
+}
+
+function drawTeamStation(context: CanvasRenderingContext2D, station: InteractionPoint) {
+  drawShadow(context, station.x, station.y, 18, 8, 0.16);
+  context.fillStyle = 'rgba(111, 77, 47, 0.96)';
+  context.fillRect(station.x - 44, station.y - 34, 88, 20);
+  context.fillRect(station.x - 30, station.y - 14, 60, 18);
+  context.fillStyle = 'rgba(251, 243, 226, 0.95)';
+  context.fillRect(station.x - 18, station.y - 42, 36, 10);
+  context.fillStyle = 'rgba(33, 29, 20, 0.76)';
+  context.fillRect(station.x - 62, station.y - 84, 124, 24);
+  context.fillStyle = '#fbf6de';
+  context.font = '600 14px Georgia';
+  context.fillText(station.label, station.x - 46, station.y - 67);
+}
+
+function drawArenaDesk(context: CanvasRenderingContext2D, desk: InteractionPoint) {
+  const pulse = 1 + Math.sin(performance.now() / 240) * 0.05;
+  drawShadow(context, desk.x, desk.y, 18, 8, 0.18);
+  context.fillStyle = 'rgba(92, 58, 34, 0.96)';
+  context.fillRect(desk.x - 28, desk.y - 16, 56, 22);
+  context.fillStyle = 'rgba(250, 230, 170, 0.82)';
+  context.beginPath();
+  context.arc(desk.x, desk.y - 24, 18 * pulse, 0, Math.PI * 2);
+  context.fill();
+  context.fillStyle = 'rgba(37, 25, 17, 0.8)';
+  context.fillRect(desk.x - 58, desk.y - 84, 116, 24);
+  context.fillStyle = '#fff2d0';
+  context.font = '600 14px Georgia';
+  context.fillText(desk.label, desk.x - 40, desk.y - 67);
 }
 
 function drawCreature(context: CanvasRenderingContext2D, assets: LoadedAssets, creature: CreatureInstance) {
@@ -1831,15 +2150,21 @@ function drawCanvasHint(context: CanvasRenderingContext2D, game: GameState) {
 function drawBattleOverlay(context: CanvasRenderingContext2D, assets: LoadedAssets, game: GameState) {
   if (game.battle.phase === 'idle') return;
 
-  const { ally, wild, allyVigor, allyMaxVigor, wildVigor, wildMaxVigor, log } = game.battle;
+  const ally = game.battle.allyTeam[game.battle.allyIndex];
+  const foe = game.battle.foeTeam[game.battle.foeIndex];
+  const allyVigor = game.battle.allyVigors[ally.id] ?? 0;
+  const allyMaxVigor = computeVigor(ally);
+  const foeVigor = game.battle.foeVigors[foe.id] ?? 0;
+  const foeMaxVigor = computeVigor(foe);
+  const log = game.battle.log;
   const allyAsset = assets.creatures[ally.speciesId];
-  const wildAsset = assets.creatures[wild.speciesId];
+  const wildAsset = assets.creatures[foe.speciesId];
   const allyFrame = allyAsset.frames.left[1];
   const wildFrame = wildAsset.frames.right[1];
   const allySheet = ally.shiny ? allyAsset.shinySheet : allyAsset.normalSheet;
-  const wildSheet = wild.shiny ? wildAsset.shinySheet : wildAsset.normalSheet;
+  const wildSheet = foe.shiny ? wildAsset.shinySheet : wildAsset.normalSheet;
   const allySpecies = CREATURE_SPECIES[ally.speciesId];
-  const wildSpecies = CREATURE_SPECIES[wild.speciesId];
+  const wildSpecies = CREATURE_SPECIES[foe.speciesId];
 
   context.save();
   context.fillStyle = 'rgba(10, 18, 10, 0.58)';
@@ -1853,7 +2178,7 @@ function drawBattleOverlay(context: CanvasRenderingContext2D, assets: LoadedAsse
 
   context.fillStyle = '#27411f';
   context.font = '700 30px Georgia';
-  context.fillText('Affrontement sauvage', 106, 126);
+  context.fillText(game.battle.title, 106, 126);
 
   drawBattleCreatureCard(
     context,
@@ -1868,10 +2193,10 @@ function drawBattleOverlay(context: CanvasRenderingContext2D, assets: LoadedAsse
   );
   drawBattleCreatureCard(
     context,
-    `${wild.shiny ? 'Shiny ' : ''}${wildSpecies.name}`,
-    wild.iv,
-    wildVigor,
-    wildMaxVigor,
+    `${foe.shiny ? 'Shiny ' : ''}${wildSpecies.name}`,
+    foe.iv,
+    foeVigor,
+    foeMaxVigor,
     518,
     174,
     true,
@@ -1887,9 +2212,13 @@ function drawBattleOverlay(context: CanvasRenderingContext2D, assets: LoadedAsse
   context.font = '600 18px Georgia';
   context.fillText(log, 108, 430);
   context.fillText('1 Frappe', 108, 474);
-  context.fillText('2 Sceau', 248, 474);
+  context.fillText(game.battle.mode === 'wild' ? '2 Sceau' : '2 Focus', 248, 474);
   context.fillText('3 Repli', 392, 474);
-  context.fillText('Les PV s appellent Vigueur. On garde un peu de dignite.', 108, 514);
+  context.fillText(
+    `${game.battle.allyIndex + 1}/${game.battle.allyTeam.length} allies actifs | ${game.battle.foeIndex + 1}/${game.battle.foeTeam.length} adversaires`,
+    108,
+    514,
+  );
   context.restore();
 }
 
@@ -2001,6 +2330,10 @@ function advanceGameState(
 
   if (next.notice && next.notice.expiresAt <= timestamp) {
     next = { ...next, notice: null };
+  }
+
+  if (next.teamMenuOpen) {
+    return next;
   }
 
   if (next.battle.phase !== 'idle') {
@@ -2233,6 +2566,8 @@ function getTriggerNotice(trigger: MapTrigger) {
       return 'Tu longes la cote de nacre.';
     case 'west':
       return 'Tu t enfonces dans les bois.';
+    case 'arena':
+      return 'Tu penetres dans l arene des echos.';
     default:
       return 'Retour au village.';
   }
@@ -2241,10 +2576,23 @@ function getTriggerNotice(trigger: MapTrigger) {
 function handlePrimaryAction(current: GameState, timestamp: number): GameState {
   if (current.player.moving) return current;
   if (current.battle.phase !== 'idle') return current;
+  if (current.teamMenuOpen) {
+    return closeTeamMenu(current, 'Table des liens refermee.');
+  }
 
   const sanctuary = findNearbySanctuary(MAPS[current.mapId], current.player);
   if (sanctuary) {
     return restoreCapturedCreatures(current, sanctuary, timestamp);
+  }
+
+  const teamStation = findNearbyTeamStation(MAPS[current.mapId], current.player);
+  if (teamStation) {
+    return openTeamMenu(current, timestamp, teamStation);
+  }
+
+  const arenaDesk = findNearbyArenaDesk(MAPS[current.mapId], current.player);
+  if (arenaDesk) {
+    return startArenaBattle(current, timestamp, arenaDesk);
   }
 
   const merchant = findNearbyMerchant(MAPS[current.mapId], current.player);
@@ -2279,6 +2627,10 @@ function handlePrimaryAction(current: GameState, timestamp: number): GameState {
       text:
         current.mapId === 'south'
           ? 'Les creatures ne vont pas sauter dans tes bras. Approche-toi.'
+          : current.mapId === 'inside'
+            ? 'La table des liens au centre sert a choisir ton equipe.'
+            : current.mapId === 'arena'
+              ? 'Approche de la dalle du duel si tu veux prendre une rouste ou une couronne.'
           : current.mapId === 'outside'
             ? 'Essaie pres du marchand, du lac ou du chemin du bas.'
             : 'Ici, il n y a rien a activer pour l instant.',
@@ -2336,8 +2688,8 @@ function restoreCapturedCreatures(current: GameState, sanctuary: Sanctuary, time
 }
 
 function startBattle(current: GameState, creature: CreatureInstance, timestamp: number): GameState {
-  const ally = current.capturedCreatures[0];
-  if (!ally) {
+  const allyTeam = getActiveTeam(current);
+  if (allyTeam.length === 0) {
     return {
       ...current,
       notice: {
@@ -2351,16 +2703,15 @@ function startBattle(current: GameState, creature: CreatureInstance, timestamp: 
   return {
     ...current,
     seenSpecies: addSeenSpecies(current.seenSpecies, creature.speciesId),
-    battle: {
-      phase: 'active',
-      wild: creature,
-      ally,
-      allyVigor: computeVigor(ally),
-      allyMaxVigor: computeVigor(ally),
-      wildVigor: computeVigor(creature),
-      wildMaxVigor: computeVigor(creature),
-      log: `${ally.speciesName} entre en resonance avec ${CREATURE_SPECIES[creature.speciesId].name}.`,
-    },
+    battle: createBattleState(
+      'wild',
+      `Affrontement sauvage`,
+      allyTeam,
+      [createCapturedFromWild(creature)],
+      `${allyTeam[0].speciesName} entre en resonance avec ${CREATURE_SPECIES[creature.speciesId].name}.`,
+      0,
+      creature,
+    ),
     notice: {
       text: 'Affrontement lance. Utilise 1, 2 ou 3.',
       tone: 'info',
@@ -2386,11 +2737,13 @@ function handleBattleInput(current: GameState, key: string, timestamp: number): 
 function resolveBattleAction(current: GameState, action: BattleAction, timestamp: number): GameState {
   if (current.battle.phase === 'idle') return current;
   const battle = current.battle;
-  const wildSpecies = CREATURE_SPECIES[battle.wild.speciesId];
-  const allyPower = computeBattleDamage(battle.ally, battle.wild);
-  const wildPower = computeBattleDamage(battle.wild, battle.ally);
-  const allyEffect = describeEffectiveness(battle.ally, battle.wild);
-  const wildEffect = describeEffectiveness(battle.wild, battle.ally);
+  const ally = battle.allyTeam[battle.allyIndex];
+  const foe = battle.foeTeam[battle.foeIndex];
+  const foeSpecies = CREATURE_SPECIES[foe.speciesId];
+  const allyPower = computeBattleDamage(ally, foe);
+  const foePower = computeBattleDamage(foe, ally);
+  const allyEffect = describeEffectiveness(ally, foe);
+  const foeEffect = describeEffectiveness(foe, ally);
 
   if (action === 'repli') {
     if (Math.random() < 0.82) {
@@ -2407,63 +2760,97 @@ function resolveBattleAction(current: GameState, action: BattleAction, timestamp
 
     return applyWildCounter(
       current,
-      `Le repli rate. ${wildSpecies.name} te lit comme un livre ouvert.`,
-      wildPower,
-      wildEffect,
+      `Le repli rate. ${foeSpecies.name} te lit comme un livre ouvert.`,
+      foePower,
+      foeEffect,
       timestamp,
     );
   }
 
   if (action === 'sceau') {
-    const captureChance = computeSealChance(battle.wildVigor, battle.wildMaxVigor, battle.wild);
+    if (battle.mode !== 'wild' || !battle.sourceWild) {
+      return applyWildCounter(
+        current,
+        `${ally.speciesName} se concentre, serre les crocs et gagne l initiative.`,
+        Math.max(4, Math.round(foePower * 0.75)),
+        foeEffect,
+        timestamp,
+      );
+    }
+
+    const captureChance = computeSealChance(
+      battle.foeVigors[foe.id] ?? 0,
+      computeVigor(foe),
+      battle.sourceWild,
+    );
     if (Math.random() < captureChance) {
-      return captureCreature(current, battle.wild, timestamp, `Sceau reussi sur ${wildSpecies.name}.`);
+      return captureCreature(current, battle.sourceWild, timestamp, `Sceau reussi sur ${foeSpecies.name}.`);
     }
 
     return applyWildCounter(
       current,
-      `Le sceau craque. ${wildSpecies.name} refuse encore le lien.`,
-      wildPower,
-      wildEffect,
+      `Le sceau craque. ${foeSpecies.name} refuse encore le lien.`,
+      foePower,
+      foeEffect,
       timestamp,
     );
   }
 
-  const nextWildVigor = Math.max(0, battle.wildVigor - allyPower);
-  if (nextWildVigor <= 0) {
-    const replacement = createEncounter(battle.wild.mapId, battle.wild.slotId, battle.wild.roamBounds);
-    const ascension = grantVictoryToLeader(current.capturedCreatures, battle.ally.id);
-    return {
-      ...current,
-      creaturesByMap: {
-        ...current.creaturesByMap,
-        [battle.wild.mapId]: current.creaturesByMap[battle.wild.mapId].map((entry) =>
-          entry.id === battle.wild.id ? replacement : entry,
-        ),
-      },
-      capturedCreatures: ascension.creatures,
-      battle: { phase: 'idle' },
-      seenSpecies: addSeenSpecies(current.seenSpecies, replacement.speciesId),
-      notice: {
-        text: `${battle.ally.speciesName} remporte le duel. ${wildSpecies.name} s eparpille dans les fourres.${ascension.notice ? ` ${ascension.notice}` : ''}`,
-        tone: 'success',
-        expiresAt: timestamp + 2200,
-      },
-    };
+  const nextFoeVigor = Math.max(0, (battle.foeVigors[foe.id] ?? 0) - allyPower);
+  if (nextFoeVigor <= 0) {
+    const battleAfterHit: BattleState =
+      battle.mode === 'wild' && battle.sourceWild
+        ? battle
+        : {
+            ...battle,
+            foeVigors: {
+              ...battle.foeVigors,
+              [foe.id]: 0,
+            },
+          };
+
+    if (battle.mode === 'wild' && battle.sourceWild) {
+      const replacement = createEncounter(battle.sourceWild.mapId, battle.sourceWild.slotId, battle.sourceWild.roamBounds);
+      const ascension = grantVictoryToLeader(current.capturedCreatures, ally.id);
+      const nextTeamIds = syncTeamIds(current.teamIds, ascension.creatures);
+      return {
+        ...current,
+        creaturesByMap: {
+          ...current.creaturesByMap,
+          [battle.sourceWild.mapId]: current.creaturesByMap[battle.sourceWild.mapId].map((entry) =>
+            entry.id === battle.sourceWild?.id ? replacement : entry,
+          ),
+        },
+        capturedCreatures: ascension.creatures,
+        teamIds: nextTeamIds,
+        battle: { phase: 'idle' },
+        seenSpecies: addSeenSpecies(current.seenSpecies, replacement.speciesId),
+        notice: {
+          text: `${ally.speciesName} remporte le duel. ${foeSpecies.name} s eparpille dans les fourres.${ascension.notice ? ` ${ascension.notice}` : ''}`,
+          tone: 'success',
+          expiresAt: timestamp + 2200,
+        },
+      };
+    }
+
+    return advanceArenaAfterFoeDown(current, battleAfterHit, ally, foe, timestamp);
   }
 
-    return applyWildCounter(
+  return applyWildCounter(
     {
       ...current,
       battle: {
         ...battle,
-        wildVigor: nextWildVigor,
-        log: `${battle.ally.speciesName} frappe. ${wildSpecies.name} vacille.${allyEffect}`,
+        foeVigors: {
+          ...battle.foeVigors,
+          [foe.id]: nextFoeVigor,
+        },
+        log: `${ally.speciesName} frappe. ${foeSpecies.name} vacille.${allyEffect}`,
       },
     },
-    `${battle.ally.speciesName} frappe. ${wildSpecies.name} reste debout.${allyEffect}`,
-    wildPower,
-    wildEffect,
+    `${ally.speciesName} frappe. ${foeSpecies.name} reste debout.${allyEffect}`,
+    foePower,
+    foeEffect,
     timestamp,
   );
 }
@@ -2477,35 +2864,66 @@ function applyWildCounter(
 ): GameState {
   if (current.battle.phase === 'idle') return current;
   const battle = current.battle;
-  const nextAllyVigor = Math.max(0, battle.allyVigor - damage);
-  const wildSpecies = CREATURE_SPECIES[battle.wild.speciesId];
+  const ally = battle.allyTeam[battle.allyIndex];
+  const foe = battle.foeTeam[battle.foeIndex];
+  const nextAllyVigor = Math.max(0, (battle.allyVigors[ally.id] ?? 0) - damage);
+  const foeSpecies = CREATURE_SPECIES[foe.speciesId];
 
   if (nextAllyVigor <= 0) {
+    const defeatedBattle: BattleState = {
+      ...battle,
+      allyVigors: {
+        ...battle.allyVigors,
+        [ally.id]: 0,
+      },
+    };
+
+    const nextAllyIndex = findNextAvailableIndex(battle.allyTeam, defeatedBattle.allyVigors, battle.allyIndex);
+    if (nextAllyIndex === -1) {
+      return {
+        ...current,
+        battle: { phase: 'idle' },
+        notice: {
+          text:
+            battle.mode === 'arena'
+              ? `${introLog} ${foeSpecies.name} plie toute ton equipe. L arene te renvoie a tes gammes.`
+              : `${introLog} ${foeSpecies.name} brise la resonance. Duel perdu.`,
+          tone: 'info',
+          expiresAt: timestamp + 2400,
+        },
+      };
+    }
+
+    const nextAlly = battle.allyTeam[nextAllyIndex];
     return {
       ...current,
-      battle: { phase: 'idle' },
-      notice: {
-        text: `${introLog} ${wildSpecies.name} brise la resonance. Duel perdu.`,
-        tone: 'info',
-        expiresAt: timestamp + 2400,
+      battle: {
+        ...defeatedBattle,
+        allyIndex: nextAllyIndex,
+        log: `${introLog} ${ally.speciesName} tombe. ${nextAlly.speciesName} prend le relais.${effectNote}`,
       },
     };
   }
 
-    return {
-      ...current,
-      battle: {
-        ...battle,
-        allyVigor: nextAllyVigor,
-        log: `${introLog} ${wildSpecies.name} contre-attaque pour ${damage} vigueur.${effectNote}`,
+  return {
+    ...current,
+    battle: {
+      ...battle,
+      allyVigors: {
+        ...battle.allyVigors,
+        [ally.id]: nextAllyVigor,
       },
-    };
+      log: `${introLog} ${foeSpecies.name} contre-attaque pour ${damage} vigueur.${effectNote}`,
+    },
+  };
 }
 
 function captureCreature(current: GameState, creature: CreatureInstance, timestamp: number, prefix?: string): GameState {
   const species = CREATURE_SPECIES[creature.speciesId];
   const ascension =
-    current.battle.phase === 'idle' ? { creatures: current.capturedCreatures, notice: '' } : grantVictoryToLeader(current.capturedCreatures, current.battle.ally.id);
+    current.battle.phase === 'idle'
+      ? { creatures: current.capturedCreatures, notice: '' }
+      : grantVictoryToLeader(current.capturedCreatures, current.battle.allyTeam[current.battle.allyIndex].id);
   const captured: CapturedCreature = {
     id: Date.now() + Math.floor(Math.random() * 1000),
     speciesId: creature.speciesId,
@@ -2515,6 +2933,9 @@ function captureCreature(current: GameState, creature: CreatureInstance, timesta
     victories: 0,
   };
   const replacement = createEncounter(creature.mapId, creature.slotId, creature.roamBounds);
+  const nextCreatures = [captured, ...ascension.creatures].slice(0, 30);
+  const nextTeamIds =
+    current.teamIds.length < 6 ? syncTeamIds([...current.teamIds, captured.id], nextCreatures) : syncTeamIds(current.teamIds, nextCreatures);
 
   return {
     ...current,
@@ -2522,14 +2943,16 @@ function captureCreature(current: GameState, creature: CreatureInstance, timesta
       ...current.creaturesByMap,
       [creature.mapId]: current.creaturesByMap[creature.mapId].map((entry) => (entry.id === creature.id ? replacement : entry)),
     },
-    capturedCreatures: [captured, ...ascension.creatures].slice(0, 30),
+    capturedCreatures: nextCreatures,
+    teamIds: nextTeamIds,
     battle: { phase: 'idle' },
     seenSpecies: addSeenSpecies(addSeenSpecies(current.seenSpecies, creature.speciesId), replacement.speciesId),
     notice: {
-      text: `${prefix ? `${prefix} ` : ''}${creature.shiny ? 'Shiny ' : ''}${species.name} capture${creature.shiny ? 'e' : ''}: ${species.types.join('/')} ${creature.iv}% IV, rarete ${species.rarity.toLowerCase()}.${ascension.notice ? ` ${ascension.notice}` : ''}`,
+      text: `${prefix ? `${prefix} ` : ''}${creature.shiny ? 'Shiny ' : ''}${species.name} capture${creature.shiny ? 'e' : ''}: ${species.types.join('/')} ${creature.iv}% IV, rarete ${species.rarity.toLowerCase()}.${current.teamIds.length < 6 ? ' Elle rejoint directement l equipe.' : ' Elle file dans la reserve.'}${ascension.notice ? ` ${ascension.notice}` : ''}`,
       tone: 'success',
       expiresAt: timestamp + 2600,
     },
+    selectedCreatureId: captured.id,
   };
 }
 
@@ -3121,6 +3544,20 @@ function findNearbySanctuary(map: MapDefinition, player: PlayerState) {
     : null;
 }
 
+function findNearbyTeamStation(map: MapDefinition, player: PlayerState) {
+  if (!map.teamStation) return null;
+  return Math.hypot(player.x - map.teamStation.x, player.y - map.teamStation.y) <= map.teamStation.radius
+    ? map.teamStation
+    : null;
+}
+
+function findNearbyArenaDesk(map: MapDefinition, player: PlayerState) {
+  if (!map.arenaDesk) return null;
+  return Math.hypot(player.x - map.arenaDesk.x, player.y - map.arenaDesk.y) <= map.arenaDesk.radius
+    ? map.arenaDesk
+    : null;
+}
+
 function findNearbyCreature(game: GameState) {
   const creatures = game.creaturesByMap[game.mapId];
   if (creatures.length === 0) return null;
@@ -3140,7 +3577,11 @@ function getPlayerBody(player: PlayerState): Rect {
 
 function getActionHint(game: GameState) {
   if (game.battle.phase !== 'idle') {
-    return 'Duel: 1 Frappe, 2 Sceau, 3 Repli';
+    return game.battle.mode === 'wild' ? 'Duel: 1 Frappe, 2 Sceau, 3 Repli' : 'Arene: 1 Frappe, 2 Focus, 3 Repli';
+  }
+
+  if (game.teamMenuOpen) {
+    return 'Table des liens ouverte: clique pour composer ton equipe.';
   }
 
   if (game.fishing.phase !== 'idle') {
@@ -3151,6 +3592,17 @@ function getActionHint(game: GameState) {
   const sanctuary = findNearbySanctuary(map, game.player);
   if (sanctuary) {
     return `E pour te ressourcer a ${sanctuary.label.toLowerCase()}`;
+  }
+
+  const teamStation = findNearbyTeamStation(map, game.player);
+  if (teamStation) {
+    return `E pour gerer ton equipe a la ${teamStation.label.toLowerCase()}`;
+  }
+
+  const arenaDesk = findNearbyArenaDesk(map, game.player);
+  if (arenaDesk) {
+    const challenger = ARENA_CHALLENGERS[Math.min(game.arenaProgress, ARENA_CHALLENGERS.length - 1)];
+    return `E pour defier ${challenger.name} dans l arene`;
   }
 
   const merchant = findNearbyMerchant(map, game.player);
@@ -3179,6 +3631,7 @@ function getActionHint(game: GameState) {
   if (game.mapId === 'north') return 'Crete nord: sanctuaire de soin et creatures plus mystiques.';
   if (game.mapId === 'east') return 'Cote est: poissons, embruns et rencontres plus aquatiques.';
   if (game.mapId === 'west') return 'Bois ouest: plus dense, plus rude, plus rocheux.';
+  if (game.mapId === 'arena') return 'Arene: ici, ta team de six finit soit en gloire, soit en charpie.';
   return 'Petite pause au calme avant de ressortir.';
 }
 
@@ -3190,6 +3643,264 @@ function createStarterCreature(): CapturedCreature {
     shiny: false,
     iv: 62,
     victories: 0,
+  };
+}
+
+function getActiveTeam(game: GameState) {
+  const roster = new Map(game.capturedCreatures.map((creature) => [creature.id, creature]));
+  return game.teamIds.map((id) => roster.get(id)).filter((creature): creature is CapturedCreature => Boolean(creature));
+}
+
+function getReserveCreatures(game: GameState) {
+  const teamSet = new Set(game.teamIds);
+  return game.capturedCreatures.filter((creature) => !teamSet.has(creature.id));
+}
+
+function syncTeamIds(teamIds: number[], capturedCreatures: CapturedCreature[]) {
+  const rosterIds = new Set(capturedCreatures.map((creature) => creature.id));
+  const cleaned = teamIds.filter((id, index) => rosterIds.has(id) && teamIds.indexOf(id) === index).slice(0, 6);
+  if (cleaned.length > 0) return cleaned;
+  return capturedCreatures[0] ? [capturedCreatures[0].id] : [];
+}
+
+function selectCreature(current: GameState, creatureId: number): GameState {
+  return {
+    ...current,
+    selectedCreatureId: creatureId,
+  };
+}
+
+function closeTeamMenu(current: GameState, text: string): GameState {
+  return {
+    ...current,
+    teamMenuOpen: false,
+    notice: {
+      text,
+      tone: 'info',
+      expiresAt: performance.now() + 1700,
+    },
+  };
+}
+
+function openTeamMenu(current: GameState, timestamp: number, station: InteractionPoint): GameState {
+  return {
+    ...current,
+    teamMenuOpen: true,
+    selectedCreatureId: current.selectedCreatureId ?? current.teamIds[0] ?? current.capturedCreatures[0]?.id ?? null,
+    notice: {
+      text: `${station.label}: choisis tes six meilleurs compagnons.`,
+      tone: 'info',
+      expiresAt: timestamp + 2200,
+    },
+  };
+}
+
+function addCreatureToTeam(current: GameState, creatureId: number, timestamp: number): GameState {
+  if (current.teamIds.includes(creatureId)) {
+    return {
+      ...current,
+      notice: {
+        text: 'Cette creature est deja dans l equipe.',
+        tone: 'info',
+        expiresAt: timestamp + 1500,
+      },
+    };
+  }
+
+  if (current.teamIds.length >= 6) {
+    return {
+      ...current,
+      notice: {
+        text: 'Equipe deja pleine. Six, pas sept. On n ouvre pas un bus.',
+        tone: 'info',
+        expiresAt: timestamp + 1700,
+      },
+    };
+  }
+
+  return {
+    ...current,
+    teamIds: [...current.teamIds, creatureId],
+    selectedCreatureId: creatureId,
+  };
+}
+
+function removeCreatureFromTeam(current: GameState, creatureId: number, timestamp: number): GameState {
+  if (!current.teamIds.includes(creatureId)) {
+    return current;
+  }
+
+  if (current.teamIds.length <= 1) {
+    return {
+      ...current,
+      notice: {
+        text: 'Il te faut au moins un meneur dans l equipe.',
+        tone: 'info',
+        expiresAt: timestamp + 1700,
+      },
+    };
+  }
+
+  return {
+    ...current,
+    teamIds: current.teamIds.filter((id) => id !== creatureId),
+  };
+}
+
+function promoteCreatureToLeader(current: GameState, creatureId: number): GameState {
+  const nextTeamIds = current.teamIds.includes(creatureId)
+    ? [creatureId, ...current.teamIds.filter((id) => id !== creatureId)]
+    : [creatureId, ...current.teamIds].slice(0, 6);
+  return {
+    ...current,
+    teamIds: nextTeamIds,
+    selectedCreatureId: creatureId,
+  };
+}
+
+function moveCreatureInTeam(current: GameState, creatureId: number, delta: number): GameState {
+  const index = current.teamIds.indexOf(creatureId);
+  if (index === -1) return current;
+  const target = clamp(index + delta, 0, current.teamIds.length - 1);
+  if (target === index) return current;
+  const nextTeamIds = [...current.teamIds];
+  const [removed] = nextTeamIds.splice(index, 1);
+  nextTeamIds.splice(target, 0, removed);
+  return {
+    ...current,
+    teamIds: nextTeamIds,
+  };
+}
+
+function createCapturedFromWild(creature: CreatureInstance): CapturedCreature {
+  return {
+    id: creature.id,
+    speciesId: creature.speciesId,
+    speciesName: CREATURE_SPECIES[creature.speciesId].name,
+    shiny: creature.shiny,
+    iv: creature.iv,
+    victories: 0,
+  };
+}
+
+function createBattleState(
+  mode: 'wild' | 'arena',
+  title: string,
+  allyTeam: CapturedCreature[],
+  foeTeam: CapturedCreature[],
+  log: string,
+  rewardGold: number,
+  sourceWild?: CreatureInstance,
+): BattleState {
+  return {
+    phase: 'active',
+    mode,
+    title,
+    allyTeam,
+    allyIndex: 0,
+    allyVigors: Object.fromEntries(allyTeam.map((creature) => [creature.id, computeVigor(creature)])),
+    foeTeam,
+    foeIndex: 0,
+    foeVigors: Object.fromEntries(foeTeam.map((creature) => [creature.id, computeVigor(creature)])),
+    sourceWild,
+    rewardGold,
+    log,
+  };
+}
+
+function buildArenaTeam(challengerIndex: number) {
+  const challenger = ARENA_CHALLENGERS[Math.min(challengerIndex, ARENA_CHALLENGERS.length - 1)];
+  const team = challenger.team.map((entry, index) => ({
+    id: 100000 + challengerIndex * 100 + index,
+    speciesId: entry.speciesId,
+    speciesName: CREATURE_SPECIES[entry.speciesId].name,
+    shiny: Boolean(entry.shiny),
+    iv: entry.iv,
+    victories: 0,
+  }));
+
+  return { challenger, team };
+}
+
+function startArenaBattle(current: GameState, timestamp: number, arenaDesk: InteractionPoint): GameState {
+  const allyTeam = getActiveTeam(current);
+  if (allyTeam.length === 0) {
+    return {
+      ...current,
+      notice: {
+        text: `${arenaDesk.label}: compose d abord une equipe dans la maison.`,
+        tone: 'info',
+        expiresAt: timestamp + 1800,
+      },
+    };
+  }
+
+  const { challenger, team } = buildArenaTeam(current.arenaProgress);
+  return {
+    ...current,
+    battle: createBattleState(
+      'arena',
+      `Arene des echos`,
+      allyTeam,
+      team,
+      `${challenger.name} t attend avec ${team.length} creatures. Fais pas semblant de ne pas transpirer.`,
+      challenger.rewardGold,
+    ),
+    notice: {
+      text: `${challenger.name} entre dans l arene. Recompense: ${challenger.rewardGold} pieces.`,
+      tone: 'info',
+      expiresAt: timestamp + 2200,
+    },
+  };
+}
+
+function findNextAvailableIndex(
+  team: CapturedCreature[],
+  vigors: Record<number, number>,
+  startIndex: number,
+) {
+  for (let index = 0; index < team.length; index += 1) {
+    const candidate = (startIndex + 1 + index) % team.length;
+    if ((vigors[team[candidate].id] ?? 0) > 0) {
+      return candidate;
+    }
+  }
+  return -1;
+}
+
+function advanceArenaAfterFoeDown(
+  current: GameState,
+  battle: Extract<BattleState, { phase: 'active' }>,
+  ally: CapturedCreature,
+  foe: CapturedCreature,
+  timestamp: number,
+): GameState {
+  const nextFoeIndex = findNextAvailableIndex(battle.foeTeam, battle.foeVigors, battle.foeIndex);
+  if (nextFoeIndex !== -1) {
+    const nextFoe = battle.foeTeam[nextFoeIndex];
+    return {
+      ...current,
+      battle: {
+        ...battle,
+        foeIndex: nextFoeIndex,
+        log: `${ally.speciesName} fait tomber ${foe.speciesName}. ${nextFoe.speciesName} entre en piste.`,
+      },
+    };
+  }
+
+  const ascension = grantVictoryToLeader(current.capturedCreatures, ally.id);
+  return {
+    ...current,
+    capturedCreatures: ascension.creatures,
+    teamIds: syncTeamIds(current.teamIds, ascension.creatures),
+    arenaProgress: Math.min(current.arenaProgress + 1, ARENA_CHALLENGERS.length),
+    gold: current.gold + battle.rewardGold,
+    battle: { phase: 'idle' },
+    notice: {
+      text: `Victoire d arene. ${battle.rewardGold} pieces empochees.${ascension.notice ? ` ${ascension.notice}` : ''}`,
+      tone: 'success',
+      expiresAt: timestamp + 2600,
+    },
   };
 }
 
